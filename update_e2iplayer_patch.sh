@@ -15,12 +15,13 @@ TMP_FILE="/tmp/mnasr_e2iplayer_patch.tar.gz"
 # New hosts to be added
 # --------------------------
 # Edit this section to add more hosts easily later
-NEW_HOSTS_NAMES="host9anime hostaflaam"
+NEW_HOSTS_NAMES="hosttopcinema hosttuktukcam hostarabseed"
 NEW_HOSTS_ALIAS="
-'host9anime': 'https://9anime.com.ro',
-'hostaflaam': 'https://aflaam.com/',
+'hosttopcinema': 'https://web6.topcinema.cam/',
+'hosttuktukcam':  'https://tuk.cam/',
+'hostarabseed': 'https://a.asd.homes/',
 "
-NEW_HOSTS_JSON='"host9anime", "hostaflaam"'
+NEW_HOSTS_JSON='"hosttopcinema", "hosttuktukcam", "hostarabseed"'
 
 # --------------------------
 # Step 1: Check plugin folder
@@ -36,7 +37,7 @@ echo "✅ Found IPTVPlayer at: $PLUGIN_DIR"
 # Step 2: Download patch
 # --------------------------
 echo "⬇️  Downloading patch file..."
-wget -q -O "$TMP_FILE" "http://YOUR_SERVER/mnasr_e2iplayer_patch.tar.gz"
+wget -q -O "$TMP_FILE" "https://github.com/popking159/mye2iplayer/raw/refs/heads/main/mnasr_e2iplayer_patch.tar.gz"
 if [ $? -ne 0 ]; then
     echo "❌ Download failed. Please check your URL or connection."
     exit 1
