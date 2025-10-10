@@ -148,4 +148,8 @@ echo "------------------------------------------------------------" | tee -a "$L
 echo "📋 Summary:" | tee -a "$LOG_FILE"
 [ -n "$ADDED" ]   && echo "🆕 Added hosts:   $ADDED"   | tee -a "$LOG_FILE"
 [ -n "$UPDATED" ] && echo "🔁 Updated hosts: $UPDATED" | tee -a "$LOG_FILE"
-[ -n "$FAILED" ]  && echo "⚠️  Failed hosts:  $FAILED"  |
+[ -n "$FAILED" ]  && echo "⚠️  Failed hosts:  $FAILED"  | tee -a "$LOG_FILE"
+echo "------------------------------------------------------------" | tee -a "$LOG_FILE"
+echo "🎉 All updates completed successfully!" | tee -a "$LOG_FILE"
+echo "Log saved to: $LOG_FILE"
+echo "------------------------------------------------------------"
