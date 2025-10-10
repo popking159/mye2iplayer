@@ -37,6 +37,7 @@ URLPARSER_LINES="
 'pqham.com': self.pp.parserJWPLAYER,
 'mivalyo.com': self.pp.parserJWPLAYER,
 'vidshare.space': self.pp.parserJWPLAYER,
+'vidhidefun.com': self.pp.parserJWPLAYER,
 'updown.icu': self.pp.parserJWPLAYER
 "
 # --------------------------
