@@ -129,14 +129,16 @@ echo "✅ aliases.txt updated." | tee -a "$LOG_FILE"
 
 echo "📝 Updating list.txt..." | tee -a "$LOG_FILE"
 for host in $NEW_HOSTS_NAMES; do
-    if ! grep -q "^$host$" "$LIST_FILE"; then
-        echo "$host" >> "$LIST_FILE"
-        echo "➕ Added $host to list.txt" | tee -a "$LOG_FILE"
+    # remove accidental carriage returns / trim
+    clean_host=$(echo "$host" | tr -d '\r' | xargs)
+    if grep -qx "$clean_host" "$LIST_FILE"; then
+        echo "ℹ️  $clean_host already exists in list.txt — skipping" | tee -a "$LOG_FILE"
     else
-        echo "ℹ️  $host already exists in list.txt" | tee -a "$LOG_FILE"
+        echo "$clean_host" >> "$LIST_FILE"
+        echo "➕ Added $clean_host to list.txt" | tee -a "$LOG_FILE"
     fi
 done
-echo "✅ list.txt updated." | tee -a "$LOG_FILE"
+echo "✅ list.txt updated safely." | tee -a "$LOG_FILE"
 
 # Step 6: Update Arabic section in hostgroups.txt
 if [ -f "$GROUPS_FILE" ]; then
