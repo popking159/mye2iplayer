@@ -17,21 +17,20 @@ LOG_FILE="/tmp/update_e2iplayer_patch.log"
 URLPARSER_FILE="$PLUGIN_DIR/libs/urlparser.py"
 
 # --------------------------
-# 1️⃣ Edit this section only
+# 1️⃣ Edit these sections only
 # --------------------------
-# host files (these are the file names under hosts/, keep the "host" prefix)
+
+# Hosts to update or add (with "host" prefix)
 NEW_HOSTS_NAMES="hosttopcinema hosttuktukcam hostarabseed"
 
-# manual aliases mapping (write them exactly as you want them to appear in aliases.txt)
-# one entry per line, keep trailing comma if you want it to be separated (script will insert lines as-is)
-NEW_HOSTS_ALIAS="
-'hosttopcinema': 'https://topcinema.buzz/',
-'hosttuktukcam': 'https://tuk.cam/',
-'hostarabseed': 'https://a.asd.homes/',
+# Host → domain mapping for aliases.txt (edit here only)
+HOSTS_DOMAINS="
+hosttopcinema=https://topcinema.buzz/
+hosttuktukcam=https://tuk.cam/
+hostarabseed=https://a.asd.homes/
 "
 
-# lines to add into urlparser.py under self.hostMap = {
-# write them exactly as you want them inserted (trailing comma recommended)
+# Lines to add into urlparser.py under self.hostMap = {
 URLPARSER_LINES="
 'pqham.com': self.pp.parserJWPLAYER,
 'mivalyo.com': self.pp.parserJWPLAYER,
@@ -43,12 +42,12 @@ echo "============================================================" > "$LOG_FILE
 echo " E2iPlayer Patch Update Log - $(date)" >> "$LOG_FILE"
 echo "============================================================" >> "$LOG_FILE"
 
-# helper to backup file with timestamp
+# Helper: backup file with timestamp
 backup_file() {
     f="$1"
     if [ -f "$f" ]; then
         cp -a "$f" "${f}.bak.$(date +%s)"
-        echo "Backup: $f -> ${f}.bak.$(date +%s)" | tee -a "$LOG_FILE"
+        echo "📦 Backup created: ${f}.bak.$(date +%s)" | tee -a "$LOG_FILE"
     fi
 }
 
@@ -106,27 +105,24 @@ for host in $NEW_HOSTS_NAMES; do
     fi
 done
 
-# Step 5: Update aliases.txt (line-by-line) and list.txt
+# Step 5: Update aliases.txt, list.txt, and hostgroups.txt
 ALIASES_FILE="$HOSTS_DIR/aliases.txt"
 LIST_FILE="$HOSTS_DIR/list.txt"
 GROUPS_FILE="$HOSTS_DIR/hostgroups.txt"
 
-# Back up before editing
 backup_file "$ALIASES_FILE"
 backup_file "$LIST_FILE"
 backup_file "$GROUPS_FILE"
 
 echo "📝 Updating aliases.txt..." | tee -a "$LOG_FILE"
-# iterate alias lines preserving formatting
-echo "$NEW_HOSTS_ALIAS" | sed '/^[[:space:]]*$/d' | while IFS= read -r line; do
-    # extract host key like hosttopcinema
-    hostkey=$(echo "$line" | sed -n "s/^[[:space:]]*'\([^']*\)'.*/\1/p")
-    if [ -n "$hostkey" ] && ! grep -qF "'$hostkey':" "$ALIASES_FILE"; then
-        # insert after the opening '{' line
-        sed -i "/^{/a $line" "$ALIASES_FILE"
-        echo "➕ Added alias for $hostkey" | tee -a "$LOG_FILE"
+echo "$HOSTS_DOMAINS" | sed '/^[[:space:]]*$/d' | while IFS='=' read -r host domain; do
+    [ -z "$host" ] && continue
+    formatted="'$host': '$domain',"
+    if ! grep -q "'$host':" "$ALIASES_FILE"; then
+        sed -i "/^{/a $formatted" "$ALIASES_FILE"
+        echo "➕ Added alias for $host → $domain" | tee -a "$LOG_FILE"
     else
-        echo "ℹ️  Alias already exists or could not parse: $line" | tee -a "$LOG_FILE"
+        echo "ℹ️  Alias for $host already exists." | tee -a "$LOG_FILE"
     fi
 done
 echo "✅ aliases.txt updated." | tee -a "$LOG_FILE"
@@ -137,126 +133,78 @@ for host in $NEW_HOSTS_NAMES; do
         echo "$host" >> "$LIST_FILE"
         echo "➕ Added $host to list.txt" | tee -a "$LOG_FILE"
     else
-        echo "ℹ️  $host already in list.txt" | tee -a "$LOG_FILE"
+        echo "ℹ️  $host already exists in list.txt" | tee -a "$LOG_FILE"
     fi
 done
 echo "✅ list.txt updated." | tee -a "$LOG_FILE"
 
-# Step 6: Update Arabic section in hostgroups.txt (preserve indentation & avoid trailing comma)
+# Step 6: Update Arabic section in hostgroups.txt
 if [ -f "$GROUPS_FILE" ]; then
     echo "📝 Updating Arabic section in hostgroups.txt..." | tee -a "$LOG_FILE"
-    # backup already made above
-
-    # find the line number for "arabic"
+    backup_file "$GROUPS_FILE"
     ln_start=$(grep -n "\"arabic\"" "$GROUPS_FILE" | head -n1 | cut -d: -f1)
-    if [ -z "$ln_start" ]; then
-        echo "⚠️  Could not find \"arabic\" section in $GROUPS_FILE" | tee -a "$LOG_FILE"
-    else
-        # find the closing bracket ']' after arabic start
-        ln_end=$(awk "NR>$ln_start && /^\s*]/ {print NR; exit}" "$GROUPS_FILE")
-        if [ -z "$ln_end" ]; then
-            echo "⚠️  Could not find closing ']' for Arabic section; skipping modification." | tee -a "$LOG_FILE"
+    [ -z "$ln_start" ] && echo "⚠️  Arabic section not found!" | tee -a "$LOG_FILE" && exit 0
+    ln_end=$(awk "NR>$ln_start && /^\s*]/ {print NR; exit}" "$GROUPS_FILE")
+
+    tmpf="$(mktemp)"
+    head -n "$ln_start" "$GROUPS_FILE" > "$tmpf"
+    echo "" >> "$tmpf"
+
+    # get current items
+    current=$(sed -n "$((ln_start+1)),$((ln_end-1))p" "$GROUPS_FILE" | sed -n 's/^[[:space:]]*"\(.*\)".*/\1/p')
+
+    combined="$current"
+    for host in $NEW_HOSTS_NAMES; do
+        short=$(echo "$host" | sed 's/^host//')
+        if ! echo "$combined" | grep -x -q "$short"; then
+            combined="$combined
+$short"
+            echo "➕ Added $short to Arabic category" | tee -a "$LOG_FILE"
         else
-            # extract current items (one per line, without quotes)
-            current_items=$(sed -n "$((ln_start+1)),$((ln_end-1))p" "$GROUPS_FILE" | sed -n 's/^[[:space:]]*"\(.*\)".*/\1/p')
-
-            # build the combined list (original order, then append new ones)
-            combined=""
-            # keep original order
-            for item in $(echo "$current_items"); do
-                # empty-check (sed may produce empty lines)
-                if [ -n "$item" ]; then
-                    combined="$combined
-$item"
-                fi
-            done
-
-            # append new short names (host prefix removed) if not present
-            for host in $NEW_HOSTS_NAMES; do
-                short_name=$(echo "$host" | sed 's/^host//')
-                # check exact match
-                if ! echo "$combined" | grep -x -q "$short_name"; then
-                    combined="$combined
-$short_name"
-                    echo "➕ Will add $short_name to Arabic category" | tee -a "$LOG_FILE"
-                else
-                    echo "ℹ️  $short_name already in Arabic category" | tee -a "$LOG_FILE"
-                fi
-            done
-
-            # write a new file: header (up to ln_start), new items, then rest (from ln_end)
-            tmpf="$(mktemp)"
-            head -n "$ln_start" "$GROUPS_FILE" > "$tmpf"
-
-            # print combined items with proper commas (no trailing comma after last)
-            # clean combined (remove leading empty line)
-            cleaned=$(echo "$combined" | sed '/^[[:space:]]*$/d')
-            total=$(echo "$cleaned" | sed -n '1,$p' | wc -l | tr -d ' ')
-            idx=0
-            echo "$cleaned" | sed -n '1,$p' | while IFS= read -r it; do
-                idx=$((idx+1))
-                if [ -z "$it" ]; then
-                    continue
-                fi
-                if [ "$idx" -lt "$total" ]; then
-                    printf "  \"%s\",\n" "$it" >> "$tmpf"
-                else
-                    printf "  \"%s\"\n" "$it" >> "$tmpf"
-                fi
-            done
-
-            # append rest of file starting from ln_end (the closing bracket line and everything after)
-            tail -n +"$ln_end" "$GROUPS_FILE" >> "$tmpf"
-
-            # replace file atomically
-            mv "$tmpf" "$GROUPS_FILE"
-            echo "✅ hostgroups.txt updated (Arabic section)." | tee -a "$LOG_FILE"
+            echo "ℹ️  $short already exists in Arabic group" | tee -a "$LOG_FILE"
         fi
-    fi
+    done
+
+    cleaned=$(echo "$combined" | sed '/^[[:space:]]*$/d')
+    total=$(echo "$cleaned" | wc -l | tr -d ' ')
+    idx=0
+    echo "$cleaned" | while IFS= read -r it; do
+        idx=$((idx+1))
+        [ -z "$it" ] && continue
+        if [ "$idx" -lt "$total" ]; then
+            printf "  \"%s\",\n" "$it" >> "$tmpf"
+        else
+            printf "  \"%s\"\n" "$it" >> "$tmpf"
+        fi
+    done
+
+    tail -n +"$ln_end" "$GROUPS_FILE" >> "$tmpf"
+    mv "$tmpf" "$GROUPS_FILE"
+    echo "✅ hostgroups.txt updated (Arabic section, no trailing comma)." | tee -a "$LOG_FILE"
 else
     echo "⚠️  hostgroups.txt not found at: $GROUPS_FILE" | tee -a "$LOG_FILE"
 fi
 
-# Step 7: Update urlparser.py hostMap (insert lines immediately after the self.hostMap = { line)
+# Step 7: Update urlparser.py hostMap
 if [ -f "$URLPARSER_FILE" ]; then
     echo "🧩 Updating urlparser.py hostMap section..." | tee -a "$LOG_FILE"
-    # backup
     backup_file "$URLPARSER_FILE"
+    map_ln=$(grep -n "self\.hostMap[[:space:]]*=" "$URLPARSER_FILE" | head -n1 | cut -d: -f1)
+    [ -z "$map_ln" ] && echo "⚠️  hostMap not found; skipping" | tee -a "$LOG_FILE" && exit 0
 
-    # find the first line number that contains hostMap (broad match)
-    map_ln=$(grep -n "hostMap" "$URLPARSER_FILE" | head -n1 | cut -d: -f1)
-    if [ -z "$map_ln" ]; then
-        echo "⚠️  Could not find a hostMap assignment in $URLPARSER_FILE; skipping urlparser update." | tee -a "$LOG_FILE"
-    else
-        # We will insert lines AFTER map_ln. To preserve user order, insert lines in reverse
-        tmp_lines="$(mktemp)"
-        echo "$URLPARSER_LINES" | sed '/^[[:space:]]*$/d' > "$tmp_lines"
-
-        # reverse the lines then insert one-by-one after map_ln
-        awk ' { a[NR]=$0 } END { for(i=NR;i>=1;i--) print a[i] }' "$tmp_lines" | while IFS= read -r ins_line; do
-            # extract domain key (the thing inside first quotes)
-            domain=$(echo "$ins_line" | sed -n "s/^[[:space:]]*'\([^']*\)'.*/\1/p")
-            if [ -z "$domain" ]; then
-                echo "⚠️  Could not parse urlparser line: $ins_line" | tee -a "$LOG_FILE"
-                continue
-            fi
-
-            # check if domain already exists (match the key exactly)
-            if grep -qF "'$domain':" "$URLPARSER_FILE"; then
-                echo "ℹ️  $domain already exists in urlparser.py; skipping" | tee -a "$LOG_FILE"
-            else
-                # insert after map_ln (we always insert after the original map_ln so final order matches original order)
-                # use a safe sed append (with newline); the line will be inserted directly after the 'self.hostMap' line
-                sed -i "${map_ln}a\\
-${ins_line}" "$URLPARSER_FILE"
-                echo "➕ Inserted $domain into urlparser.py" | tee -a "$LOG_FILE"
-            fi
-        done
-        rm -f "$tmp_lines"
-        echo "✅ urlparser.py updated (if any new domains were present)." | tee -a "$LOG_FILE"
-    fi
+    echo "$URLPARSER_LINES" | sed '/^[[:space:]]*$/d' | while IFS= read -r line; do
+        domain=$(echo "$line" | sed -n "s/^[[:space:]]*'\([^']*\)'.*/\1/p")
+        [ -z "$domain" ] && continue
+        if grep -qF "'$domain':" "$URLPARSER_FILE"; then
+            echo "ℹ️  $domain already in urlparser.py" | tee -a "$LOG_FILE"
+        else
+            sed -i "${map_ln}a\    $line" "$URLPARSER_FILE"
+            echo "➕ Added $domain → urlparser.py" | tee -a "$LOG_FILE"
+        fi
+    done
+    echo "✅ urlparser.py updated." | tee -a "$LOG_FILE"
 else
-    echo "⚠️  urlparser.py not found at expected path: $URLPARSER_FILE" | tee -a "$LOG_FILE"
+    echo "⚠️  urlparser.py not found at: $URLPARSER_FILE" | tee -a "$LOG_FILE"
 fi
 
 # Step 8: Summary
