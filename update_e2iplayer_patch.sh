@@ -7,7 +7,7 @@
 #   2. Downloading and extracting patch file
 #   3. Adding new hosts to aliases.txt, list.txt, and hostgroups.txt
 # ============================================================
-
+##setup command=wget -q "--no-check-certificate" https://github.com/popking159/mye2iplayer/raw/main/update_e2iplayer_patch.sh -O - | /bin/sh
 PLUGIN_DIR="/usr/lib/enigma2/python/Plugins/Extensions/IPTVPlayer"
 TMP_FILE="/tmp/mnasr_e2iplayer_patch.tar.gz"
 
