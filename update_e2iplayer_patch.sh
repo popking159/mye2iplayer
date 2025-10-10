@@ -116,18 +116,20 @@ for host in $NEW_HOSTS_NAMES; do
 done
 echo "✅ list.txt updated." | tee -a "$LOG_FILE"
 
+# ✅ FIXED: Step 6: Add short hostname (without 'host') in Arabic group
 echo "📝 Updating Arabic section in hostgroups.txt..." | tee -a "$LOG_FILE"
 for host in $NEW_HOSTS_NAMES; do
-    if ! grep -q "\"$host\"" "$GROUPS_FILE"; then
+    short_name=$(echo "$host" | sed 's/^host//')
+    if ! grep -q "\"$short_name\"" "$GROUPS_FILE"; then
         sed -i "/\"arabic\"[[:space:]]*:/,/]/ {
-            /]/ i\    \"$host\",
+            /]/ i\    \"$short_name\",
         }" "$GROUPS_FILE"
-        echo "➕ Added $host to Arabic category" | tee -a "$LOG_FILE"
+        echo "➕ Added $short_name to Arabic category" | tee -a "$LOG_FILE"
     fi
 done
 echo "✅ hostgroups.txt updated (Arabic section)." | tee -a "$LOG_FILE"
 
-# Step 6: Update urlparser.py hostMap
+# Step 7: Update urlparser.py hostMap
 if [ -f "$URLPARSER_FILE" ]; then
     echo "🧩 Updating urlparser.py hostMap section..." | tee -a "$LOG_FILE"
     for line in $(echo "$URLPARSER_LINES" | tr ',' '\n'); do
@@ -142,7 +144,7 @@ else
     echo "⚠️  urlparser.py not found at expected path." | tee -a "$LOG_FILE"
 fi
 
-# Step 7: Summary
+# Step 8: Summary
 echo "" | tee -a "$LOG_FILE"
 echo "------------------------------------------------------------" | tee -a "$LOG_FILE"
 echo "📋 Summary:" | tee -a "$LOG_FILE"
