@@ -36,7 +36,8 @@ hostarabseed=https://a.asd.homes/
 URLPARSER_LINES="
 'pqham.com': self.pp.parserJWPLAYER,
 'mivalyo.com': self.pp.parserJWPLAYER,
-'vidshare.space': self.pp.parserJWPLAYER
+'vidshare.space': self.pp.parserJWPLAYER,
+'updown.icu': self.pp.parserJWPLAYER
 "
 # --------------------------
 
