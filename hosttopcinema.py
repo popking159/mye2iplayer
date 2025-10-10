@@ -69,50 +69,128 @@ class TopCinema(CBaseHostClass):
     def getLinksForVideo(self, cItem):
         printDBG("TopCinema.getLinksForVideo [%s]" % cItem)
         linksTab = []
-        sts, data = self.getPage(cItem['url'], self.defaultParams)
-        if not sts:
+        url = cItem['url']
+
+        sts, data = self.getPage(url, self.defaultParams)
+        if not sts or not data:
             return []
 
-        # Try to find embedded iframes or direct <source> links, as fallback
-        iframes = self.cm.ph.getAllItemsBeetwenMarkers(data, '<iframe', '>')
-        for iframe in iframes:
-            url = self.cm.ph.getSearchGroups(iframe, 'src="([^"]+)"')[0]
-            if url and ('youtube' in url or 'vimeo' in url or 'embed' in url):
-                linksTab.append({'name': self.up.getHostName(url).capitalize(),
-                                 'url': strwithmeta(url, {'Referer': self.MAIN_URL}),
-                                 'need_resolve': 1})
+        # 1️⃣ Try to extract iframe src directly
+        iframeUrl = self.cm.ph.getSearchGroups(data, r'<iframe[^>]+src="([^"]+)"')[0]
+        if iframeUrl:
+            printDBG("Found iframe: %s" % iframeUrl)
+            linksTab.append({
+                'name': self.up.getHostName(iframeUrl).capitalize(),
+                'url': strwithmeta(iframeUrl, {'Referer': url}),
+                'need_resolve': 1
+            })
 
-        video_links = self.cm.ph.getAllItemsBeetwenMarkers(data, 'source', '>')
-        for link in video_links:
-            url = self.cm.ph.getSearchGroups(link, 'src="([^"]+)"')[0]
-            if url:
-                linksTab.append({'name': self.up.getHostName(url).capitalize(),
-                                 'url': strwithmeta(url, {'Referer': self.MAIN_URL}),
-                                 'need_resolve': 1})
+        # 2️⃣ Try to extract encoded/redirected link from JS (common in sharevid.online)
+        if not iframeUrl:
+            encoded = self.cm.ph.getSearchGroups(data, r"atob\('([^']+)'")[0]
+            if encoded:
+                import base64
+                try:
+                    decoded = base64.b64decode(encoded).decode('utf-8')
+                    printDBG("Decoded base64 URL: %s" % decoded)
+                    linksTab.append({
+                        'name': self.up.getHostName(decoded).capitalize(),
+                        'url': strwithmeta(decoded, {'Referer': url}),
+                        'need_resolve': 1
+                    })
+                except Exception as e:
+                    printDBG("Base64 decode error: %s" % str(e))
 
-        # **If no links found by parsing the page, fallback to urlparser**
+        # 3️⃣ Try to extract var URL (e.g. var urlPlay = '...')
         if not linksTab:
-            printDBG("TopCinema.getLinksForVideo: no direct links found, calling getVideoLinks()")
-            # Delegate to getVideoLinks for parser-based resolution
-            resolved = self.getVideoLinks(cItem['url'])
-            printDBG("TopCinema.getLinksForVideo: resolved via parser: %s" % str(resolved))
-            # The parser returns list of dicts or a list of playable links
+            js_url = self.cm.ph.getSearchGroups(data, r"var\s+urlPlay\s*=\s*['\"]([^'\"]+)")[0]
+            if js_url:
+                printDBG("Found JS urlPlay: %s" % js_url)
+                linksTab.append({
+                    'name': self.up.getHostName(js_url).capitalize(),
+                    'url': strwithmeta(js_url, {'Referer': url}),
+                    'need_resolve': 1
+                })
+
+        # 4️⃣ Try to extract <source> video src (sometimes they exist)
+        sources = self.cm.ph.getAllItemsBeetwenMarkers(data, '<source', '>')
+        for s in sources:
+            src = self.cm.ph.getSearchGroups(s, r'src="([^"]+)"')[0]
+            if src:
+                printDBG("Found direct video src: %s" % src)
+                linksTab.append({
+                    'name': self.up.getHostName(src).capitalize(),
+                    'url': strwithmeta(src, {'Referer': url}),
+                    'need_resolve': 0
+                })
+
+        # 5️⃣ Fallback to urlparser
+        if not linksTab:
+            printDBG("TopCinema.getLinksForVideo: no links found, using parser fallback...")
+            resolved = self.getVideoLinks(url)
             for entry in resolved:
-                # If entry is a dict already
                 if isinstance(entry, dict):
                     linksTab.append(entry)
                 else:
-                    # If it's just a URL or something else
-                    linksTab.append({'url': entry, 'name': self.up.getHostName(cItem['url'])})
+                    linksTab.append({
+                        'name': self.up.getHostName(url),
+                        'url': entry,
+                        'need_resolve': 1
+                    })
 
         return linksTab
 
-    def getVideoLinks(self, url):
-        printDBG("TopCinema.getVideoLinks [%s]" % url)
-        urlTab = []
-        if self.cm.isValidUrl(url):
-            return self.up.getVideoLinkExt(url)
-        return urlTab
+
+    def getVideoLinks(self, videoUrl):
+        printDBG('TopCinema.getVideoLinks >>> %s' % videoUrl)
+        urlsTab = []
+
+        # 🔹 Add VikingFile support
+        if 'vikingfile.com' in videoUrl:
+            printDBG('Detected VikingFile link, trying to extract...')
+            sts, data = self.cm.getPage(videoUrl)
+            if not sts:
+                printDBG('Failed to load VikingFile page')
+                return urlsTab
+
+            # 1️⃣ Try direct <video src="...">
+            video = self.cm.ph.getSearchGroups(data, r'<video[^>]+src=["\'](https?://[^"\']+\.(?:mp4|m3u8)[^"\']*)["\']')[0]
+            if video:
+                printDBG('Found direct video src: %s' % video)
+                urlsTab.append({'name': 'VikingFile', 'url': video, 'need_resolve': 0})
+                return urlsTab
+
+            # 2️⃣ Try Base64 encoded URL (inside atob("..."))
+            b64_url = self.cm.ph.getSearchGroups(data, r'atob\(["\']([^"\']+)["\']\)')[0]
+            if b64_url:
+                try:
+                    import base64
+                    decoded = base64.b64decode(b64_url).decode('utf-8')
+                    printDBG('Decoded Base64 VikingFile URL: %s' % decoded)
+                    if decoded.startswith('http'):
+                        urlsTab.append({'name': 'VikingFile (decoded)', 'url': decoded, 'need_resolve': 0})
+                        return urlsTab
+                except Exception as e:
+                    printDBG('VikingFile decode error: %s' % e)
+
+            # 3️⃣ Try embedded iframe with /f/ pattern
+            iframe = self.cm.ph.getSearchGroups(data, r'<iframe[^>]+src=["\'](https?://vikingfile\.com/f/[^"\']+)["\']')[0]
+            if iframe:
+                printDBG('Found VikingFile iframe: %s' % iframe)
+                sts, iframe_data = self.cm.getPage(iframe)
+                if sts:
+                    video = self.cm.ph.getSearchGroups(iframe_data, r'<video[^>]+src=["\'](https?://[^"\']+)["\']')[0]
+                    if video:
+                        urlsTab.append({'name': 'VikingFile (iframe)', 'url': video, 'need_resolve': 0})
+                        return urlsTab
+
+            printDBG('VikingFile: no playable link found, may require CAPTCHA')
+            return urlsTab
+
+        # 🔹 keep your existing resolver for all other hosts
+        return self.up.getVideoLinkExt(videoUrl)
+
+
 
     def listMainMenu(self, cItem):
         # items of main menu
@@ -121,27 +199,29 @@ class TopCinema(CBaseHostClass):
         # Define main categories statically like FilmPalast does
         self.MAIN_CAT_TAB = [
             {'category': 'movies_folder', 'title': _('الافلام')},
-            {'category': 'series_folder', 'title': _('المسلسلات')},
+            #{'category': 'series_folder', 'title': _('المسلسلات')},
         ] + self.searchItems()
 
         # Define subcategories for each folder
         self.MOVIES_CAT_TAB = [
-            {'category': 'list_items', 'title': _('افلام Netfilx'), 'url': self.getFullUrl('/netflix-movies/')},
-            {'category': 'list_items', 'title': _('افلام اجنبي'), 'url': self.getFullUrl('/category/%d8%a7%d9%81%d9%84%d8%a7%d9%85-%d8%a7%d8%ac%d9%86%d8%a8%d9%8a-3/')},
-            {'category': 'list_items', 'title': _('افلام اسيوية'), 'url': self.getFullUrl('/category/%d8%a7%d9%81%d9%84%d8%a7%d9%85-%d8%a7%d8%b3%d9%8a%d9%88%d9%8a/')},
-            {'category': 'list_items', 'title': _('افلام انيمى'), 'url': self.getFullUrl('/category/%d8%a7%d9%81%d9%84%d8%a7%d9%85-%d8%a7%d9%86%d9%85%d9%8a-2/')},
-            {'category': 'list_items', 'title': _('Top Rated IMDB'), 'url': self.getFullUrl('/top-rating-imdb/')}
+            {'category': 'list_items', 'title': _('افلام اجنبي'), 'url': self.getFullUrl('/category/%d8%a7%d9%81%d9%84%d8%a7%d9%85-%d8%a7%d8%ac%d9%86%d8%a8%d9%8a/')},
+            {'category': 'list_items', 'title': _('افلام اسيوية'), 'url': self.getFullUrl('/category/%d8%a7%d9%81%d9%84%d8%a7%d9%85-%d8%a7%d8%b3%d9%8a%d9%88%d9%8a%d8%a9/')},
+            {'category': 'list_items', 'title': _('افلام انيمى'), 'url': self.getFullUrl('/category/%d8%a7%d9%81%d9%84%d8%a7%d9%85-%d8%a7%d9%86%d9%85%d9%8a/')},
+            {'category': 'list_items', 'title': _('افلام تركية'), 'url': self.getFullUrl('/category/%d8%a7%d9%81%d9%84%d8%a7%d9%85-%d8%aa%d8%b1%d9%83%d9%8a%d8%a9/')},
+            {'category': 'list_items', 'title': _('افلام عربية'), 'url': self.getFullUrl('/category/%d8%a7%d9%81%d9%84%d8%a7%d9%85-%d8%b9%d8%b1%d8%a8%d9%8a/')},
+            {'category': 'list_items', 'title': _('افلام هندية'), 'url': self.getFullUrl('/category/%d8%a7%d9%81%d9%84%d8%a7%d9%85-%d9%87%d9%86%d8%af%d9%8a/')}
         ]
 
-        self.SERIES_CAT_TAB = [
-            {'category': 'series', 'title': _('مسلسلات اجنبى نيتفليكس'), 'url': self.getFullUrl('/netflix-series/?cat=7')},
-            {'category': 'series', 'title': _('مسلسلات اجنبي'), 'url': self.getFullUrl('/category/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d8%a7%d8%ac%d9%86%d8%a8%d9%8a-3/')},
-            {'category': 'series', 'title': _('مسلسلات اسيوى نيتفليكس'), 'url': self.getFullUrl('/netflix-series/?cat=9')},
-            {'category': 'series', 'title': _('مسلسلات اسيوية'), 'url': self.getFullUrl('/category/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d8%a7%d8%b3%d9%8a%d9%88%d9%8a%d8%a9-10/')},
-            {'category': 'series', 'title': _('مسلسلات انيمى نيتفليكس'), 'url': self.getFullUrl('/netflix-series/?cat=8')},
-            {'category': 'series', 'title': _('مسلسلات انيمى'), 'url': self.getFullUrl('/category/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d8%a7%d9%86%d9%85%d9%8a-2/')},
-            {'category': 'series', 'title': _('Top Rated IMDB'), 'url': self.getFullUrl('/top-rating-imdb-series/')}
-        ]
+        # self.SERIES_CAT_TAB = [
+            # {'category': 'series', 'title': _('مسلسلات عربية'), 'url': self.getFullUrl('/category/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d8%b9%d8%b1%d8%a8%d9%8a/')},
+            # {'category': 'series', 'title': _('مسلسلات اجنبي'), 'url': self.getFullUrl('/category/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d8%a7%d8%ac%d9%86%d8%a8%d9%8a/')},
+            # {'category': 'series', 'title': _('مسلسلات تركية'), 'url': self.getFullUrl('/category/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d8%aa%d8%b1%d9%83%d9%8a%d8%a9/')},
+            # {'category': 'series', 'title': _('مسلسلات اسيوية'), 'url': self.getFullUrl('/category/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d8%a7%d8%b3%d9%8a%d9%88%d9%8a%d8%a9/')},
+            # {'category': 'series', 'title': _('مسلسلات انيمى'), 'url': self.getFullUrl('/category/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d8%a7%d9%86%d9%85%d9%8a/')},
+            # {'category': 'series', 'title': _('مسلسلات مدبلجة'), 'url': self.getFullUrl('/category/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d9%85%d8%af%d8%a8%d9%84%d8%ac%d8%a9/')},
+            # {'category': 'series', 'title': _('مسلسلات رمضان 2025'), 'url': self.getFullUrl('/category/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d8%b1%d9%85%d8%b6%d8%a7%d9%86-2025/')},
+            # {'category': 'series', 'title': _('مسلسلات هندية'), 'url': self.getFullUrl('/category/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d9%87%d9%86%d8%af%d9%8a%d8%a9/')}
+        # ]
 
         # Display main categories
         self.listsTab(self.MAIN_CAT_TAB, cItem)
@@ -150,9 +230,9 @@ class TopCinema(CBaseHostClass):
         printDBG('TopCinema.listMoviesFolder')
         self.listsTab(self.MOVIES_CAT_TAB, cItem)
 
-    def listSeriesFolder(self, cItem):
-        printDBG('TopCinema.listSeriesFolder')
-        self.listsTab(self.SERIES_CAT_TAB, cItem)
+    # def listSeriesFolder(self, cItem):
+        # printDBG('TopCinema.listSeriesFolder')
+        # self.listsTab(self.SERIES_CAT_TAB, cItem)
 
     def listItems(self, cItem):
         printDBG("TopCinema.listItems [%s]" % cItem)
@@ -160,8 +240,10 @@ class TopCinema(CBaseHostClass):
         if not sts:
             return
 
-        tmp = self.cm.ph.getDataBeetwenMarkers(data, '<ul class="Posts--List SixInRow', '<div class="paginate', False)[1]
+        tmp = self.cm.ph.getDataBeetwenMarkers(data, '<main class="site-inner', '</main>', False)[1]
+        #printDBG('tmp.listItems >>> %s' % tmp)
         data_items = self.cm.ph.getAllItemsBeetwenMarkers(tmp, '<div class="Small--Box', '</a>', False)
+        #printDBG('data_items.listItems >>> %s' % data_items)
 
         if not data_items:
             data_items = tmp.split('<div class="Small--Box')[1:]
@@ -177,7 +259,7 @@ class TopCinema(CBaseHostClass):
 
             baseurl, filenameurl = pureurl.rsplit('/', 1)
             fixedfilenameurl = urllib_quote_plus(filenameurl)
-            url = baseurl + '/' + fixedfilenameurl
+            url = baseurl + '/' + fixedfilenameurl + "watch/"
 
             pureicon = self.cm.ph.getSearchGroups(m, r'data-src=["\']([^"\']+)["\']')[0]
             if not pureicon:
@@ -194,9 +276,9 @@ class TopCinema(CBaseHostClass):
             self.addDir(params)
 
         # === PAGINATION HANDLING ===
-        pagination = self.cm.ph.getDataBeetwenMarkers(data, '<div class="paginate">', '</div>', False)[1]
-        next_page = self.cm.ph.getSearchGroups(pagination, r'<a[^>]+href="([^"]+)"[^>]*>\s*&raquo;\s*</a>')[0]
-        prev_page = self.cm.ph.getSearchGroups(pagination, r'<a[^>]+href="([^"]+)"[^>]*>\s*&laquo;\s*</a>')[0]
+        pagination = self.cm.ph.getDataBeetwenMarkers(data, '<div class="pagination">', '</div>', False)[1]
+        prev_page = self.cm.ph.getSearchGroups(pagination, r'<a[^>]+href="([^"]+)"[^>]*>\s*&raquo;\s*</a>')[0]
+        next_page = self.cm.ph.getSearchGroups(pagination, r'<a[^>]+href="([^"]+)"[^>]*>\s*&laquo;\s*</a>')[0]
 
         if next_page:
             next_page = self.getFullUrl(next_page)
@@ -219,7 +301,7 @@ class TopCinema(CBaseHostClass):
         printDBG(data)
         if not sts:
             return
-        tmp = self.cm.ph.getDataBeetwenMarkers(data, '<ul class="Posts--List SixInRow', '<div class="paginate', False)[1]
+        tmp = self.cm.ph.getDataBeetwenMarkers(data, '<div class="BlocksHolder', '<script type="speculationrules', False)[1]
         printDBG("tmp.listSeriesItems ||||||||||||||||||||||||||||||||||||")
         printDBG(tmp)
         data_items = self.cm.ph.getAllItemsBeetwenMarkers(tmp, '<div class="Small--Box', '</a>', False)
@@ -239,22 +321,16 @@ class TopCinema(CBaseHostClass):
 
             baseurl, filenameurl = pureurl.rsplit('/', 1)
             fixedfilenameurl = urllib_quote_plus(filenameurl)
-            url = baseurl + '/' + fixedfilenameurl
+            url = baseurl + '/' + fixedfilenameurl + "watch/"
+            printDBG(url)
 
             pureicon = self.cm.ph.getSearchGroups(m, r'data-src=["\']([^"\']+)["\']')[0]
             if not pureicon:
                 pureicon = self.cm.ph.getSearchGroups(m, r'src=["\']([^"\']+)["\']')[0]
 
             icon = ''
-            if pureicon:
-                baseicon, filenameicon = pureicon.rsplit('/', 1)
-                fixedfilenameicon = urllib_quote_plus(filenameicon)
-                icon = baseicon + '/' + fixedfilenameicon
 
-            if url in ['/series/', '/assemblies/']:
-                url = urljoin(url, 'list/')
-
-            params = {'category': 'show_seasons', 'title': title, 'icon': icon, 'url': url}
+            params = {'category': 'exploreSeriesItems', 'title': title, 'icon': icon, 'url': url}
             printDBG(str(params))
             self.addDir(params)
 
@@ -280,46 +356,36 @@ class TopCinema(CBaseHostClass):
         url = cItem['url']
         printDBG("|||||||||||||||||exploreUrl||||||||||||||||||||")
         printDBG(url)
-        base_url = urljoin(cItem['url'].replace('list/', ''), 'watch/')
-        printDBG("|||||||||||||||||base_url||||||||||||||||||||")
-        printDBG(base_url)
-        sts, data = self.getPage(base_url)
-        printDBG("||||||||||||||||||exploreitems_data|||||||||||||||||||||")
-        #printDBG(data)
+
+        sts, data = self.getPage(url)
         if not sts:
             return
-        ajaxURL = self.getFullUrl(self.cm.ph.getSearchGroups(data, '''MyAjaxURL = ['"]([^"^']+?)['"]''')[0])
-        printDBG("|||||||||||||||||ajaxURL||||||||||||||||||||")
-        printDBG(ajaxURL)
-        tmp = self.cm.ph.getDataBeetwenMarkers(data, ('<h2', '>', 'watch--servers-title'), ('</ul', '>'), True)[1]
+
+        # Extract servers section
+        tmp = self.cm.ph.getDataBeetwenMarkers(data, '<div class="ServersList"', '</ul>', False)[1]
+        printDBG("|||||||||||||||||Servers block||||||||||||||||||||")
         printDBG(tmp)
-        tmp2 = self.cm.ph.getAllItemsBeetwenMarkers(tmp, '<li', ('</li', '>'))
-        printDBG("|||||||||||||||||tmp2_data||||||||||||||||||||")
-        printDBG(tmp2)
-        for item in tmp2:
-            Sid = self.cleanHtmlStr(self.cm.ph.getSearchGroups(item, '''data-id=['"]([^"^']+?)['"]''')[0])
-            Serv = self.cleanHtmlStr(self.cm.ph.getSearchGroups(item, '''data-server=['"]([^"^']+?)['"]''')[0])
-            title = self.cleanHtmlStr(self.cm.ph.getDataBeetwenNodes(item, ('<span', '>'), ('</span', '>'), False)[1])
 
-            post_data = {'id': Sid, 'i': Serv}
+        # Extract each server <li>
+        items = self.cm.ph.getAllItemsBeetwenMarkers(tmp, '<li', '</li>')
+        printDBG("|||||||||||||||||servers count||||||||||||||||||||")
+        printDBG(str(len(items)))
 
-            params = dict(self.defaultParams)
-            params['header'] = dict(self.AJAX_HEADER)
-            params['header']['Referer'] = self.cm.meta['url']
-            params['header']['Origin'] = self.getMainUrl()
-            params['header']['Host'] = self.up.getDomain(base_url)
+        for item in items:
+            link = self.cm.ph.getSearchGroups(item, r'data-watch="([^"]+?)"')[0]
+            if not link:
+                continue
 
-            sts, data = self.getPage(urljoin(ajaxURL, 'Single/Server.php'), params, post_data)
-            if not sts:
-                return
+            title = self.cleanHtmlStr(item)
+            if not title:
+                title = 'Server'
 
-            url = self.getFullUrl(self.ph.search(data, self.ph.IFRAME_SRC_URI_RE)[1])
-            printDBG("|||||||||||||||||data_post_data||||||||||||||||||||")
-            printDBG(data)
+            printDBG("Found server title: %s" % title)
+            printDBG("Found server link: %s" % link)
 
             params = MergeDicts(cItem, {
                 'title': title,
-                'url': url,
+                'url': self.getFullUrl(link),
                 'type': 'video',
                 'category': 'video',
                 'need_resolve': 1
@@ -329,45 +395,45 @@ class TopCinema(CBaseHostClass):
     def exploreSeriesItems(self, cItem):
         printDBG('TopCinema.exploreSeriesItems')
         url = cItem['url']
-        sts, data = self.getPage(url)
+        printDBG("|||||||||||||||||url_exploreSeriesItems||||||||||||||||||||")
+        printDBG(url)
 
+        sts, data = self.getPage(url)
+        printDBG("|||||||||||||||||data_exploreSeriesItems||||||||||||||||||||")
+        printDBG(data)
         if not sts:
             return
 
-        # Extract the block that contains episodes
-        episodes_block = self.cm.ph.getDataBeetwenMarkers(data,
-            '<ul class="episodes__list', '</ul>', False)[1]
+        # Extract servers section
+        tmp = self.cm.ph.getDataBeetwenMarkers(data, '<div class="ServersList"', '</ul>', False)[1]
+        printDBG("|||||||||||||||||Servers block||||||||||||||||||||")
+        printDBG(tmp)
 
-        printDBG('Episodes block:')
-        #printDBG(episodes_block)
+        # Extract each server <li>
+        items = self.cm.ph.getAllItemsBeetwenMarkers(tmp, '<li', '</li>')
+        printDBG("|||||||||||||||||servers count||||||||||||||||||||")
+        printDBG(str(len(items)))
 
-        episodes = self.cm.ph.getAllItemsBeetwenMarkers(episodes_block, '<li', '</li>')
-        episodes.reverse()
-
-        for item in episodes:
-            episode_url = self.cm.ph.getSearchGroups(item, 'href="([^"]+?)"')[0]
-            if not episode_url:
+        for item in items:
+            link = self.cm.ph.getSearchGroups(item, r'data-watch="([^"]+?)"')[0]
+            if not link:
                 continue
-            episode_url = self.getFullUrl(episode_url).rstrip('/') + '/watch'
 
-            # Extract episode number only, and prepend "الحلقة"
-            episode_number = self.cm.ph.getSearchGroups(item, '<div class="epi__num">.*?<b>([^<]+)</b>')[0]
-            if episode_number:
-                title = 'الحلقة %s' % episode_number.strip()
-            else:
-                title = self.cleanHtmlStr(item)  # or fallback to generic title
+            title = self.cleanHtmlStr(item)
+            if not title:
+                title = 'Server'
 
-            params = dict(cItem)
-            params.update({
+            printDBG("Found server title: %s" % title)
+            printDBG("Found server link: %s" % link)
+
+            params = MergeDicts(cItem, {
                 'title': title,
-                'url': episode_url,
-                'icon': cItem.get('icon', ''),
-                'desc': cItem.get('desc', ''),
-                'category': 'explore_item',
+                'url': self.getFullUrl(link),
+                'type': 'video',
+                'category': 'video',
+                'need_resolve': 1
             })
-
-            printDBG('Adding episode: %s' % str(params))
-            self.addDir(params)
+            self.addVideo(params)
 
     def safe_b64decode(self, data):
         """Base64 decode with automatic padding fix."""
@@ -520,8 +586,8 @@ class TopCinema(CBaseHostClass):
         # FOLDERS
         elif category == 'movies_folder':
             self.listMoviesFolder(self.currItem)
-        elif category == 'series_folder':
-            self.listSeriesFolder(self.currItem)
+        # elif category == 'series_folder':
+            # self.listSeriesFolder(self.currItem)
         elif category == 'explore_item':
             self.exploreItems(self.currItem)
         elif category == 'explore_episodes':
