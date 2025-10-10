@@ -142,45 +142,19 @@ echo "✅ list.txt updated." | tee -a "$LOG_FILE"
 if [ -f "$GROUPS_FILE" ]; then
     echo "📝 Updating Arabic section in hostgroups.txt..." | tee -a "$LOG_FILE"
     backup_file "$GROUPS_FILE"
-    ln_start=$(grep -n "\"arabic\"" "$GROUPS_FILE" | head -n1 | cut -d: -f1)
-    [ -z "$ln_start" ] && echo "⚠️  Arabic section not found!" | tee -a "$LOG_FILE" && exit 0
-    ln_end=$(awk "NR>$ln_start && /^\s*]/ {print NR; exit}" "$GROUPS_FILE")
 
-    tmpf="$(mktemp)"
-    head -n "$ln_start" "$GROUPS_FILE" > "$tmpf"
-    echo "" >> "$tmpf"
-
-    # get current items
-    current=$(sed -n "$((ln_start+1)),$((ln_end-1))p" "$GROUPS_FILE" | sed -n 's/^[[:space:]]*"\(.*\)".*/\1/p')
-
-    combined="$current"
+    # Insert new hosts just below the "arabic": [ line
     for host in $NEW_HOSTS_NAMES; do
         short=$(echo "$host" | sed 's/^host//')
-        if ! echo "$combined" | grep -x -q "$short"; then
-            combined="$combined
-$short"
-            echo "➕ Added $short to Arabic category" | tee -a "$LOG_FILE"
+        if ! grep -q "\"$short\"" "$GROUPS_FILE"; then
+            sed -i "/\"arabic\"[[:space:]]*:[[:space:]]*\[/a\  \"$short\"," "$GROUPS_FILE"
+            echo "➕ Inserted $short under Arabic category (top of list)" | tee -a "$LOG_FILE"
         else
-            echo "ℹ️  $short already exists in Arabic group" | tee -a "$LOG_FILE"
+            echo "ℹ️  $short already exists in Arabic section" | tee -a "$LOG_FILE"
         fi
     done
 
-    cleaned=$(echo "$combined" | sed '/^[[:space:]]*$/d')
-    total=$(echo "$cleaned" | wc -l | tr -d ' ')
-    idx=0
-    echo "$cleaned" | while IFS= read -r it; do
-        idx=$((idx+1))
-        [ -z "$it" ] && continue
-        if [ "$idx" -lt "$total" ]; then
-            printf "  \"%s\",\n" "$it" >> "$tmpf"
-        else
-            printf "  \"%s\"\n" "$it" >> "$tmpf"
-        fi
-    done
-
-    tail -n +"$ln_end" "$GROUPS_FILE" >> "$tmpf"
-    mv "$tmpf" "$GROUPS_FILE"
-    echo "✅ hostgroups.txt updated (Arabic section, no trailing comma)." | tee -a "$LOG_FILE"
+    echo "✅ hostgroups.txt updated (new hosts inserted under Arabic)." | tee -a "$LOG_FILE"
 else
     echo "⚠️  hostgroups.txt not found at: $GROUPS_FILE" | tee -a "$LOG_FILE"
 fi
@@ -189,20 +163,25 @@ fi
 if [ -f "$URLPARSER_FILE" ]; then
     echo "🧩 Updating urlparser.py hostMap section..." | tee -a "$LOG_FILE"
     backup_file "$URLPARSER_FILE"
-    map_ln=$(grep -n "self\.hostMap[[:space:]]*=" "$URLPARSER_FILE" | head -n1 | cut -d: -f1)
-    [ -z "$map_ln" ] && echo "⚠️  hostMap not found; skipping" | tee -a "$LOG_FILE" && exit 0
 
-    echo "$URLPARSER_LINES" | sed '/^[[:space:]]*$/d' | while IFS= read -r line; do
-        domain=$(echo "$line" | sed -n "s/^[[:space:]]*'\([^']*\)'.*/\1/p")
-        [ -z "$domain" ] && continue
-        if grep -qF "'$domain':" "$URLPARSER_FILE"; then
-            echo "ℹ️  $domain already in urlparser.py" | tee -a "$LOG_FILE"
-        else
-            sed -i "${map_ln}a\    $line" "$URLPARSER_FILE"
-            echo "➕ Added $domain → urlparser.py" | tee -a "$LOG_FILE"
-        fi
-    done
-    echo "✅ urlparser.py updated." | tee -a "$LOG_FILE"
+    map_ln=$(grep -n "self\.hostMap[[:space:]]*=" "$URLPARSER_FILE" | head -n1 | cut -d: -f1)
+    if [ -z "$map_ln" ]; then
+        echo "⚠️  hostMap not found in urlparser.py; skipping" | tee -a "$LOG_FILE"
+    else
+        echo "$URLPARSER_LINES" | sed '/^[[:space:]]*$/d' | while IFS= read -r line; do
+            domain=$(echo "$line" | sed -n "s/^[[:space:]]*'\([^']*\)'.*/\1/p")
+            [ -z "$domain" ] && continue
+            if grep -qF "'$domain':" "$URLPARSER_FILE"; then
+                echo "ℹ️  $domain already exists in urlparser.py" | tee -a "$LOG_FILE"
+            else
+                # ensure comma at the end of the line
+                formatted_line=$(echo "$line" | sed 's/,\{0,1\}$/,/')
+                sed -i "${map_ln}a\            ${formatted_line}" "$URLPARSER_FILE"
+                echo "➕ Added $domain to urlparser.py (with correct indentation + comma)" | tee -a "$LOG_FILE"
+            fi
+        done
+        echo "✅ urlparser.py updated successfully." | tee -a "$LOG_FILE"
+    fi
 else
     echo "⚠️  urlparser.py not found at: $URLPARSER_FILE" | tee -a "$LOG_FILE"
 fi
