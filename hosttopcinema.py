@@ -32,7 +32,7 @@ def get_config_list():
 
 
 def gettytul():
-    return 'https://web6.topcinema.cam/'  # main url of host
+    return 'https://topcinema.buzz/'  # main url of host
 
 
 class TopCinema(CBaseHostClass):
