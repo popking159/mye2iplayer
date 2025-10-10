@@ -112,14 +112,36 @@ sort_arabic_group() {
     ln_end=$(awk "NR>$ln_start && /^\s*]/ {print NR; exit}" "$f")
     [ -z "$ln_end" ] && return
 
+    # Build a temp file with the sorted Arabic section
     head -n "$ln_start" "$f" > "${f}.tmp"
-    sed -n "$((ln_start+1)),$((ln_end-1))p" "$f" \
-        | sed -n 's/^[[:space:]]*"\(.*\)".*/\1/p' \
-        | sort -u | while IFS= read -r h; do
-            echo "  \"$h\","
-        done >> "${f}.tmp"
+
+    # Extract, clean, and sort all entries inside "arabic": [
+    entries=$(sed -n "$((ln_start+1)),$((ln_end-1))p" "$f" | \
+        sed -n 's/^[[:space:]]*"\(.*\)".*/\1/p' | sort -u)
+
+    # Write each line with commas except for the last
+    total=$(echo "$entries" | wc -l | tr -d ' ')
+    idx=0
+    echo "$entries" | while IFS= read -r h; do
+        idx=$((idx+1))
+        [ -z "$h" ] && continue
+        if [ "$idx" -lt "$total" ]; then
+            echo "  \"$h\"," >> "${f}.tmp"
+        else
+            echo "  \"$h\"" >> "${f}.tmp"
+        fi
+    done
+
+    # Append the rest of the file
     tail -n +"$ln_end" "$f" >> "${f}.tmp"
+
+    # Replace atomically
     mv "${f}.tmp" "$f"
+
+    # Normalize and clean again
+    normalize_file "$f"
+
+    echo "✅ Arabic group sorted and last comma removed." | tee -a "$LOG_FILE"
 }
 
 # --------------------------
