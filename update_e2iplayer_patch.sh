@@ -6,6 +6,7 @@
 #  - Downloads and extracts patch
 #  - Adds or updates hosts
 #  - Updates aliases.txt, list.txt, and hostgroups.txt (Arabic)
+#  - Updates urlparser.py hostMap section
 # ============================================================
 ##setup command=wget -q "--no-check-certificate" https://github.com/popking159/mye2iplayer/raw/main/update_e2iplayer_patch.sh -O - | /bin/sh
 # ============================================================
@@ -13,6 +14,7 @@ PLUGIN_DIR="/usr/lib/enigma2/python/Plugins/Extensions/IPTVPlayer"
 TMP_FILE="/tmp/mnasr_e2iplayer_patch.tar.gz"
 HOSTS_DIR="$PLUGIN_DIR/hosts"
 LOG_FILE="/tmp/update_e2iplayer_patch.log"
+URLPARSER_FILE="$PLUGIN_DIR/libs/urlparser.py"
 
 # --------------------------
 # 1️⃣ Edit this section only
@@ -23,6 +25,13 @@ NEW_HOSTS_ALIAS="
 'hosttuktukcam': 'https://tuk.cam/',
 'hostarabseed': 'https://a.asd.homes/',
 "
+
+# Lines to insert into urlparser.py under self.hostMap = {
+URLPARSER_LINES="
+    'pqham.com': self.pp.parserJWPLAYER,
+    'mivalyo.com': self.pp.parserJWPLAYER,
+    'vidshare.space': self.pp.parserJWPLAYER,
+"
 # --------------------------
 
 echo "============================================================" > "$LOG_FILE"
@@ -31,7 +40,7 @@ echo "============================================================" >> "$LOG_FIL
 
 # Step 1: Check plugin folder
 if [ ! -d "$PLUGIN_DIR" ]; then
-    echo "❌ IPTVPlayer folder not found at: $PLUGIN_DIR"
+    echo "❌ IPTVPlayer folder not found at: $PLUGIN_DIR" | tee -a "$LOG_FILE"
     echo "Aborting update." | tee -a "$LOG_FILE"
     exit 1
 fi
@@ -107,7 +116,6 @@ for host in $NEW_HOSTS_NAMES; do
 done
 echo "✅ list.txt updated." | tee -a "$LOG_FILE"
 
-# Step 6: Update Arabic section neatly
 echo "📝 Updating Arabic section in hostgroups.txt..." | tee -a "$LOG_FILE"
 for host in $NEW_HOSTS_NAMES; do
     if ! grep -q "\"$host\"" "$GROUPS_FILE"; then
@@ -119,16 +127,25 @@ for host in $NEW_HOSTS_NAMES; do
 done
 echo "✅ hostgroups.txt updated (Arabic section)." | tee -a "$LOG_FILE"
 
+# Step 6: Update urlparser.py hostMap
+if [ -f "$URLPARSER_FILE" ]; then
+    echo "🧩 Updating urlparser.py hostMap section..." | tee -a "$LOG_FILE"
+    for line in $(echo "$URLPARSER_LINES" | tr ',' '\n'); do
+        domain=$(echo "$line" | grep -o "'[^']*'" | tr -d "'")
+        if [ -n "$domain" ] && ! grep -q "$domain" "$URLPARSER_FILE"; then
+            sed -i "/self\.hostMap[[:space:]]*=[[:space:]]*{/a $line," "$URLPARSER_FILE"
+            echo "➕ Added $domain to urlparser hostMap" | tee -a "$LOG_FILE"
+        fi
+    done
+    echo "✅ urlparser.py updated." | tee -a "$LOG_FILE"
+else
+    echo "⚠️  urlparser.py not found at expected path." | tee -a "$LOG_FILE"
+fi
+
 # Step 7: Summary
 echo "" | tee -a "$LOG_FILE"
 echo "------------------------------------------------------------" | tee -a "$LOG_FILE"
 echo "📋 Summary:" | tee -a "$LOG_FILE"
 [ -n "$ADDED" ]   && echo "🆕 Added hosts:   $ADDED"   | tee -a "$LOG_FILE"
 [ -n "$UPDATED" ] && echo "🔁 Updated hosts: $UPDATED" | tee -a "$LOG_FILE"
-[ -n "$FAILED" ]  && echo "⚠️  Failed hosts:  $FAILED"  | tee -a "$LOG_FILE"
-echo "------------------------------------------------------------" | tee -a "$LOG_FILE"
-
-echo "" | tee -a "$LOG_FILE"
-echo "🎉 All updates completed successfully!" | tee -a "$LOG_FILE"
-echo "Log saved to: $LOG_FILE"
-echo "------------------------------------------------------------"
+[ -n "$FAILED" ]  && echo "⚠️  Failed hosts:  $FAILED"  |
