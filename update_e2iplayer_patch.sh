@@ -58,27 +58,50 @@ backup_file() {
 normalize_file() {
     f="$1"
     [ -f "$f" ] || return
-    sed -i 's/\r$//' "$f"             # fix CRLF
-    sed -i 's/[[:space:]]\+$//' "$f"  # trim end spaces
-    sed -i -e '$a\' "$f"              # ensure newline at EOF
+
+    # Fix CRLF → LF and remove trailing spaces
+    sed -i 's/\r$//' "$f"
+    sed -i 's/[[:space:]]\+$//' "$f"
+
+    # Remove empty lines at the start
+    sed -i '/./,$!d' "$f"
+
+    # Ensure final newline
+    sed -i -e '$a\' "$f"
 }
 
 sort_list_file() {
     f="$1"
     normalize_file "$f"
-    sort -u -o "$f" "$f"
+
+    # Remove blank lines and sort alphabetically (unique)
+    grep -v '^[[:space:]]*$' "$f" | sort -u > "${f}.tmp"
+    mv "${f}.tmp" "$f"
+
+    # Remove blank lines again just in case
+    sed -i '/^[[:space:]]*$/d' "$f"
+
+    # Ensure no leading blank lines
+    sed -i '/./,$!d' "$f"
 }
 
 sort_aliases_file() {
     f="$1"
     normalize_file "$f"
+
+    # Clean header/footer and sort dictionary body
     awk '
         BEGIN { inblock=0 }
         /^\{/ { print; inblock=1; next }
         /^\}/ { close("sort"); inblock=0; print; next }
         inblock { print | "sort" }
         !inblock && !/^[{}]/ { print }
-    ' "$f" > "${f}.tmp" && mv "${f}.tmp" "$f"
+    ' "$f" > "${f}.tmp"
+
+    mv "${f}.tmp" "$f"
+
+    # Ensure file starts directly with '{'
+    sed -i '/./,$!d' "$f"
 }
 
 sort_arabic_group() {
