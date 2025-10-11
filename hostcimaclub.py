@@ -1,22 +1,41 @@
 # -*- coding: utf-8 -*-
+# Last modified: 11/10/2025 - popking (odem2014)
+# typical import for a standard host
 ###################################################
-# CimaClub - e2iplayer host
-# Updated: 11/10/2025
+# LOCAL import
 ###################################################
+# localization library
+from Plugins.Extensions.IPTVPlayer.components.iptvplayerinit import TranslateTXT as _
+# host main class
 from Plugins.Extensions.IPTVPlayer.components.ihost import CHostBase, CBaseHostClass
-from Plugins.Extensions.IPTVPlayer.libs.pCommon import CParsingHelper
-from Plugins.Extensions.IPTVPlayer.tools.iptvtools import printDBG, printExc
+# tools - write on log, write exception infos and merge dicts
+from Plugins.Extensions.IPTVPlayer.tools.iptvtools import printDBG, printExc, MergeDicts
+# add metadata to url
 from Plugins.Extensions.IPTVPlayer.tools.iptvtypes import strwithmeta
-import re, urllib
-from Components.config import config
+# library for json (instead of standard json.loads and json.dumps)
+from Plugins.Extensions.IPTVPlayer.libs.e2ijson import loads as json_loads, dumps as json_dumps
+# read informations in m3u8
+from Plugins.Extensions.IPTVPlayer.libs.urlparserhelper import getDirectM3U8Playlist
+###################################################
+from Plugins.Extensions.IPTVPlayer.p2p3.UrlParse import urljoin
+from Plugins.Extensions.IPTVPlayer.p2p3.UrlLib import urllib_quote_plus
+###################################################
+# FOREIGN import
+###################################################
+import re, time
+import base64
+###################################################
+
+def gettytul():
+    return 'https://ciimaclub.club/'  # main url of host
 
 class CimaClub(CBaseHostClass):
 
     def __init__(self):
         CBaseHostClass.__init__(self, {'history': 'cimaclub', 'cookie': 'cimaclub.cookie'})
-        self.MAIN_URL = 'https://ciimaclub.club'
-        self.SEARCH_URL = self.MAIN_URL + '/search'
-        self.DEFAULT_ICON_URL = "https://raw.githubusercontent.com/oe-mirrors/e2iplayer/gh-pages/Thumbnails/cimaclub.png"
+        self.MAIN_URL = gettytul()
+        self.SEARCH_URL = self.MAIN_URL + 'search'
+        self.DEFAULT_ICON_URL = "https://raw.githubusercontent.com/popking159/softcam/refs/heads/master/tuktuk.png"
         self.AJAX_URL = self.MAIN_URL + '/wp-content/themes/CimaClub/ajaxCenter/Home/AdvFiltering.php'
 
         self.HEADER = self.cm.getDefaultHeader(browser='chrome')
@@ -29,10 +48,39 @@ class CimaClub(CBaseHostClass):
         }
 
     def getPage(self, baseUrl, addParams=None, post_data=None):
+        # Handle unicode URLs safely
+        if any(ord(c) > 127 for c in baseUrl):
+            baseUrl = urllib_quote_plus(baseUrl, safe="://")
+
         if addParams is None:
             addParams = dict(self.defaultParams)
-        addParams["cloudflare_params"] = {"cookie_file": self.COOKIE_FILE, "User-Agent": self.HEADER.get("User-Agent")}
-        return self.cm.getPageCFProtection(baseUrl, addParams, post_data)
+
+        # Always re-init CF parameters
+        addParams["cloudflare_params"] = {
+            "cookie_file": self.COOKIE_FILE,
+            "User-Agent": self.HEADER.get("User-Agent")
+        }
+
+        # For GET requests: reload cookie each time
+        if post_data is None:
+            addParams["load_cookie"] = False   # don’t reuse
+            addParams["save_cookie"] = True    # save new one
+
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                sts, data = self.cm.getPageCFProtection(baseUrl, addParams, post_data)
+                if sts and data:
+                    return sts, data
+            except Exception as e:
+                printDBG('CimaClub.getPage retry %d failed: %s' % (attempt + 1, str(e)))
+
+            # Cloudflare timing window delay
+            time.sleep(1.5)
+
+        printDBG(f"[CimaClub] Retrying {baseUrl} failed after {max_retries} attempts due to timeout.")
+        return False, ''
+
 
     ###################################################
     # MAIN MENU
@@ -41,9 +89,37 @@ class CimaClub(CBaseHostClass):
         printDBG('CimaClub.listMainMenu')
         MAIN_CAT_TAB = [
             {'category': 'list_categories', 'title': _('الرئيسية'), 'url': self.MAIN_URL},
-            {'category': 'search', 'title': _('بحث'), 'search_item': True},
+            {'category': 'movies_categories', 'title': _('الافلام')},
+            {'category': 'series_categories', 'title': _('المسلسلات')},
+            {'category': 'search', 'title': _('بحث'), 'search_item': True}
         ]
         self.listsTab(MAIN_CAT_TAB, cItem)
+
+        # Define subcategories for each folder
+        self.MOVIES_CAT_TAB = [
+            {'category': 'list_movies', 'title': _('افلام اجنبية'), 'url': self.getFullUrl('/category/%d8%a7%d9%81%d9%84%d8%a7%d9%85-%d8%a7%d8%ac%d9%86%d8%a8%d9%8a/')},
+            {'category': 'list_movies', 'title': _('افلام عربية'), 'url': self.getFullUrl('/category/%d8%a7%d9%81%d9%84%d8%a7%d9%85-%d8%b9%d8%b1%d8%a8%d9%8a/')},
+            {'category': 'list_movies', 'title': _('افلام اسيوية'), 'url': self.getFullUrl('/category/%d8%a7%d9%81%d9%84%d8%a7%d9%85-%d8%a7%d8%b3%d9%8a%d9%88%d9%8a%d8%a9/')},
+            {'category': 'list_movies', 'title': _('افلام هندية'), 'url': self.getFullUrl('/category/%d8%a7%d9%81%d9%84%d8%a7%d9%85-%d9%87%d9%86%d8%af%d9%8a/')},
+            {'category': 'list_movies', 'title': _('افلام انيمى'), 'url': self.getFullUrl('/category/%d8%a7%d9%81%d9%84%d8%a7%d9%85-%d8%a7%d9%86%d9%85%d9%8a/')}
+        ]
+
+        self.SERIES_CAT_TAB = [
+            {'category': 'list_series', 'title': _('مسلسلات اجنبية'), 'url': self.getFullUrl('/category/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d8%a7%d8%ac%d9%86%d8%a8%d9%8a/')},
+            {'category': 'list_series', 'title': _('مسلسلات اسيوية'), 'url': self.getFullUrl('/category/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d8%a7%d8%b3%d9%8a%d9%88%d9%8a%d8%a9/')},
+            {'category': 'list_series', 'title': _('مسلسلات عربية'), 'url': self.getFullUrl('/category/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d8%b9%d8%b1%d8%a8%d9%8a/')},
+            {'category': 'list_series', 'title': _('مسلسلات تركية'), 'url': self.getFullUrl('/category/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d8%aa%d8%b1%d9%83%d9%8a%d8%a9/')},
+            {'category': 'list_series', 'title': _('مسلسلات انيمى'), 'url': self.getFullUrl('/category/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d8%a7%d9%86%d9%85%d9%8a/')},
+            {'category': 'list_series', 'title': _('مسلسلات مدبلجة'), 'url': self.getFullUrl('/category/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d9%85%d8%af%d8%a8%d9%84%d8%ac%d8%a9/')}
+        ]
+
+    def listMoviesCategories(self, cItem):
+        printDBG('CimaClub.listMoviesCategories')
+        self.listsTab(self.MOVIES_CAT_TAB, cItem)
+
+    def listSeriesCategories(self, cItem):
+        printDBG('CimaClub.listMoviesCategories')
+        self.listsTab(self.SERIES_CAT_TAB, cItem)
 
     ###################################################
     # LIST CATEGORIES
@@ -52,17 +128,19 @@ class CimaClub(CBaseHostClass):
         printDBG('CimaClub.listCategories')
 
         sts, data = self.getPage(self.MAIN_URL)
+        printDBG("data.listCategories [%s]" % data)
         if not sts:
             return
 
         # Get only the dropdown section
-        data = self.cm.ph.getDataBeetwenMarkers(data, '<div class="dropdown select-menu">', '</div>', False)[1]
-        if not data:
+        tmp = self.cm.ph.getDataBeetwenMarkers(data, '<div class="dropdown select-menu">', '</div>', False)[1]
+        printDBG("tmp.listCategories [%s]" % tmp)
+        if not tmp:
             printDBG('No dropdown menu found')
             return
 
         # Extract all category <li> blocks
-        cat_blocks = self.cm.ph.getAllItemsBeetwenMarkers(data, '<li', '</li>')
+        cat_blocks = self.cm.ph.getAllItemsBeetwenMarkers(tmp, '<li', '</li>')
         printDBG('Found %d categories' % len(cat_blocks))
 
         for item in cat_blocks:
@@ -103,7 +181,7 @@ class CimaClub(CBaseHostClass):
             if not icon:
                 icon = self.cm.ph.getSearchGroups(block, r'src="([^"]+)"')[0]
 
-            title = self.cleanHtmlStr(self.cm.ph.getSearchGroups(block, r'title="([^"]+)"')[0])
+            title = self.cleanHtmlStr(self.cm.ph.getSearchGroups(block, r'title="([^"]+)"')[0]).replace("مترجم اون لاين", "")
             desc = self.cleanHtmlStr(self.cm.ph.getDataBeetwenMarkers(block, '<p>', '</p>', False)[1])
             quality = self.cleanHtmlStr(self.cm.ph.getDataBeetwenMarkers(block, '<span style=', '</span>', False)[1])
 
@@ -118,6 +196,90 @@ class CimaClub(CBaseHostClass):
             self.addDir(params)
 
     ###################################################
+    # LIST UNITS FROM CATEGORY PAGE (WITH PAGINATION)
+    ###################################################
+    def listUnits(self, cItem):
+        printDBG('CimaClub.listUnits >>> %s' % cItem)
+
+        sts, data = self.getPage(cItem['url'])
+        if not sts or not data:
+            printDBG('listUnits: failed to load page')
+            return
+
+        ###################################################
+        # MAIN MOVIE BLOCK
+        ###################################################
+        main_block = self.cm.ph.getDataBeetwenMarkers(data, '<div class="BlocksHolder"', '<div class="pagination">', False)[1]
+        #printDBG('main_block.listUnits >>> %s' % main_block)
+        if not main_block:
+            main_block = self.cm.ph.getDataBeetwenMarkers(data, '<div id="MainFiltar"', '</div>', False)[1]
+
+        if not main_block:
+            printDBG('listUnits: No BlocksHolder/MainFiltar found')
+            return
+
+        ###################################################
+        # MOVIE BOXES
+        ###################################################
+        items = self.cm.ph.getAllItemsBeetwenMarkers(main_block, '<div class="Small--Box', '</div>')
+        #printDBG('items.listUnits >>> %s' % items)
+        printDBG('listUnits: Found %d items' % len(items))
+
+        for item in items:
+            url = self.cm.ph.getSearchGroups(item, r'href="([^"]+)"')[0]
+            if not url:
+                continue
+
+            icon = self.cm.ph.getSearchGroups(item, r'data-src="([^"]+)"')[0]
+            if not icon:
+                icon = self.cm.ph.getSearchGroups(item, r'src="([^"]+)"')[0]
+
+            title = self.cleanHtmlStr(self.cm.ph.getSearchGroups(item, r'title="([^"]+)"')[0])
+            if not title:
+                title = self.cleanHtmlStr(self.cm.ph.getDataBeetwenMarkers(item, '<h2>', '</h2>', False)[1])
+
+            desc = self.cleanHtmlStr(self.cm.ph.getDataBeetwenMarkers(item, '<p>', '</p>', False)[1])
+            quality = self.cleanHtmlStr(self.cm.ph.getDataBeetwenMarkers(item, '<span style=', '</span>', False)[1])
+
+            params = dict(cItem)
+            params.update({
+                'title': title.replace("مترجم اون لاين", "").strip(),
+                'url': self.getFullUrl(url),
+                'icon': self.getFullUrl(icon),
+                'desc': '%s | %s' % (quality, desc),
+                'category': 'explore_items'
+            })
+            self.addDir(params)
+
+        ###################################################
+        # PAGINATION
+        ###################################################
+        pagination_block = self.cm.ph.getDataBeetwenMarkers(data, '<div class="pagination">', '</div>', False)[1]
+        if pagination_block:
+            next_url = self.cm.ph.getSearchGroups(pagination_block, r'<a[^>]+class="next page-numbers"[^>]+href="([^"]+)"')[0]
+            prev_url = self.cm.ph.getSearchGroups(pagination_block, r'<a[^>]+class="prev page-numbers"[^>]+href="([^"]+)"')[0]
+
+            if prev_url:
+                params = dict(cItem)
+                params.update({
+                    'title': '<<< ' + _('السابق'),
+                    'url': self.getFullUrl(prev_url),
+                    'category': 'list_movies'
+                })
+                self.addDir(params)
+                printDBG('listUnits: Found previous page %s' % prev_url)
+
+            if next_url:
+                params = dict(cItem)
+                params.update({
+                    'title': _('التالي') + ' >>>',
+                    'url': self.getFullUrl(next_url),
+                    'category': 'list_movies'
+                })
+                self.addDir(params)
+                printDBG('listUnits: Found next page %s' % next_url)
+
+    ###################################################
     # EXPLORE ITEM (get list of servers)
     ###################################################
     def exploreItems(self, cItem):
@@ -128,31 +290,36 @@ class CimaClub(CBaseHostClass):
         if not url.endswith('/'):
             url += '/'
         url += 'watch/'
+        printDBG('url.exploreItems >>> %s' % url)
 
         sts, data = self.getPage(url)
+        printDBG('data.exploreItems >>> %s' % data)
         if not sts:
             return
 
         # Extract the main <ul id="watch"> section
         watch_list = self.cm.ph.getDataBeetwenMarkers(data, '<ul id="watch">', '</ul>', False)[1]
+        printDBG('watch_list.exploreItems >>> %s' % watch_list)
         if not watch_list:
             printDBG('No watch list found')
             return
 
         # Get all <li> blocks between markers
         li_items = self.cm.ph.getAllItemsBeetwenMarkers(watch_list, '<li', '</li>')
+        printDBG('li_items.exploreItems >>> %s' % li_items)
         printDBG('Found %d servers' % len(li_items))
 
         for item in li_items:
             # Extract server name and URL
             url = self.cm.ph.getSearchGroups(item, r'data-watch="([^"]+)"')[0]
-            title = self.cm.ph.getSearchGroups(item, r'>([^<]+)</noscript>')[0].strip()
-
+            printDBG('url.exploreItems >>> %s' % url)
             if not url:
                 continue
-
-            # Clean up title (e.g. remove numbers like <span>0</span>)
-            title = self.cm.ph.clean_html(title)
+            # Extract domain (remove https://, www., and path)
+            title = url.replace('https://', '').replace('http://', '').split('/')[0]
+            title = title.replace('www.', '').strip()
+            title = self.cleanHtmlStr(title)
+            printDBG('title.exploreItems >>> %s' % title)
             if not title:
                 title = self.cm.ph.getSearchGroups(item, r'>([^<]+)</span>')[0].strip()
 
@@ -178,6 +345,13 @@ class CimaClub(CBaseHostClass):
         if not url:
             return []
         return [{'name': 'CimaClub - %s' % cItem.get('title', ''), 'url': url, 'need_resolve': 1}]
+
+    def getVideoLinks(self, url):
+        printDBG("CimaClub.getVideoLinks [%s]" % url)
+        urlTab = []
+        if self.cm.isValidUrl(url):
+            return self.up.getVideoLinkExt(url)
+        return urlTab
 
     ###################################################
     # SEARCH
@@ -216,11 +390,19 @@ class CimaClub(CBaseHostClass):
         if name is None:
             self.listMainMenu({'name': 'category'})
         elif category == 'list_categories':
-            self.listCategories(cItem)
+            self.listCategories(self.currItem)
         elif category == 'list_items':
-            self.listItems(cItem)
+            self.listItems(self.currItem)
         elif category == 'explore_items':
-            self.exploreItems(cItem)
+            self.exploreItems(self.currItem)
+        elif category == 'movies_categories':
+            self.listMoviesCategories(self.currItem)
+        elif category == 'series_categories':
+            self.listSeriesCategories(self.currItem)        
+        elif category == 'list_movies':
+            self.listUnits(self.currItem)
+        elif category == 'list_series':
+            self.listUnits(self.currItem)
         elif category == 'search':
             self.listSearchResult(cItem, cItem.get('search_pattern', ''), cItem.get('search_type', ''))
 
