@@ -23,13 +23,15 @@ URLPARSER_FILE="$PLUGIN_DIR/libs/urlparser.py"
 # --------------------------
 
 # Hosts to update or add (with "host" prefix)
-NEW_HOSTS_NAMES="hosttopcinema hosttuktukcam hostarabseed"
+NEW_HOSTS_NAMES="hosttopcinema hosttuktukcam hostarabseed hostcimaclub"
 
 # Host → domain mapping for aliases.txt
 HOSTS_DOMAINS="
 hosttopcinema=https://topcinema.buzz/
 hosttuktukcam=https://tuk.cam/
 hostarabseed=https://a.asd.homes/
+hostcimaclub=https://ciimaclub.club/
+
 "
 
 # Lines to add into urlparser.py under self.hostMap = {
