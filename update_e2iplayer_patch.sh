@@ -31,7 +31,6 @@ hosttopcinema=https://topcinema.buzz/
 hosttuktukcam=https://tuk.cam/
 hostarabseed=https://a.asd.homes/
 hostcimaclub=https://ciimaclub.club/
-
 "
 
 # Lines to add into urlparser.py under self.hostMap = {
