@@ -108,9 +108,12 @@ class CimaClub(CBaseHostClass):
             {'category': 'list_series', 'title': _('مسلسلات اجنبية'), 'url': self.getFullUrl('/category/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d8%a7%d8%ac%d9%86%d8%a8%d9%8a/')},
             {'category': 'list_series', 'title': _('مسلسلات اسيوية'), 'url': self.getFullUrl('/category/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d8%a7%d8%b3%d9%8a%d9%88%d9%8a%d8%a9/')},
             {'category': 'list_series', 'title': _('مسلسلات عربية'), 'url': self.getFullUrl('/category/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d8%b9%d8%b1%d8%a8%d9%8a/')},
+            {'category': 'list_series', 'title': _('مسلسلات رمضان 2025'), 'url': self.getFullUrl('/category/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d8%b1%d9%85%d8%b6%d8%a7%d9%86-2025/')},
+            {'category': 'list_series', 'title': _('مسلسلات هندية'), 'url': self.getFullUrl('/category/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d9%87%d9%86%d8%af%d9%8a%d8%a9/')},
             {'category': 'list_series', 'title': _('مسلسلات تركية'), 'url': self.getFullUrl('/category/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d8%aa%d8%b1%d9%83%d9%8a%d8%a9/')},
             {'category': 'list_series', 'title': _('مسلسلات انيمى'), 'url': self.getFullUrl('/category/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d8%a7%d9%86%d9%85%d9%8a/')},
-            {'category': 'list_series', 'title': _('مسلسلات مدبلجة'), 'url': self.getFullUrl('/category/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d9%85%d8%af%d8%a8%d9%84%d8%ac%d8%a9/')}
+            {'category': 'list_series', 'title': _('مسلسلات مدبلجة'), 'url': self.getFullUrl('/category/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d9%85%d8%af%d8%a8%d9%84%d8%ac%d8%a9/')},
+            {'category': 'list_series', 'title': _('برامج تليفزيونية'), 'url': self.getFullUrl('/category/%d8%a8%d8%b1%d8%a7%d9%85%d8%ac-%d8%aa%d9%84%d9%81%d8%b2%d9%8a%d9%88%d9%86%d9%8a%d8%a9/')}
         ]
 
     def listMoviesCategories(self, cItem):
@@ -181,7 +184,8 @@ class CimaClub(CBaseHostClass):
             if not icon:
                 icon = self.cm.ph.getSearchGroups(item, r'src="([^"]+)"')[0]
 
-            title = self.cleanHtmlStr(self.cm.ph.getSearchGroups(item, r'title="([^"]+)"')[0]).replace("مترجم اون لاين", "").replace("فيلم", "").replace("مسلسل", "").replace("مترجمة", "").replace("مترجم", "").strip()
+            title = self.cleanHtmlStr(self.cm.ph.getSearchGroups(item, r'title="([^"]+)"')[0]).replace("مترجمة اون لاين", "").replace("مترجم اون لاين", "").replace("فيلم", "").replace("مسلسل", "").replace("مترجمة", "").replace("مترجم", "").replace("اون لاين", "").strip()
+            printDBG('title.listItems >>> %s' % title)
 
 
             desc = self.cleanHtmlStr(self.cm.ph.getDataBeetwenMarkers(item, '<p>', '</p>', False)[1])
@@ -261,12 +265,13 @@ class CimaClub(CBaseHostClass):
                 icon = self.cm.ph.getSearchGroups(item, r'src="([^"]+)"')[0]
 
             # --- Clean and normalize title ---
-            title = self.cleanHtmlStr(self.cm.ph.getSearchGroups(item, r'title="([^"]+)"')[0]).replace("مترجم اون لاين", "").replace("فيلم", "").replace("مسلسل", "").replace("مترجمة", "").replace("مترجم", "").strip()
+            title = self.cleanHtmlStr(self.cm.ph.getSearchGroups(item, r'title="([^"]+)"')[0]).replace("مترجمة اون لاين", "").replace("مترجم اون لاين", "").replace("فيلم", "").replace("مسلسل", "").replace("مترجمة", "").replace("مترجم", "").replace("اون لاين", "").strip()
+            printDBG('title.listUnits >>> %s' % title)
 
             # --- Description & Quality ---
             desc = self.cleanHtmlStr(self.cm.ph.getDataBeetwenMarkers(item, '<p>', '</p>', False)[1])
             quality = self.cleanHtmlStr(
-                self.cm.ph.getDataBeetwenMarkers(item, '<span', '</span>', False)[1]
+                self.cm.ph.getDataBeetwenMarkers(item, '<span style="background: #563e7d;">', '</span>', False)[1]
             ).strip()
 
             ###################################################
