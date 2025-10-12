@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Last modified: 11/10/2025 - popking (odem2014)
+# Last modified: 12/10/2025 - popking (odem2014)
 # typical import for a standard host
 ###################################################
 # LOCAL import
@@ -9,7 +9,7 @@ from Plugins.Extensions.IPTVPlayer.components.iptvplayerinit import TranslateTXT
 # host main class
 from Plugins.Extensions.IPTVPlayer.components.ihost import CHostBase, CBaseHostClass
 # tools - write on log, write exception infos and merge dicts
-from Plugins.Extensions.IPTVPlayer.tools.iptvtools import printDBG, printExc, MergeDicts
+from Plugins.Extensions.IPTVPlayer.tools.iptvtools import printDBG, printExc, MergeDicts, E2ColoR
 # add metadata to url
 from Plugins.Extensions.IPTVPlayer.tools.iptvtypes import strwithmeta
 # library for json (instead of standard json.loads and json.dumps)
@@ -139,11 +139,11 @@ class CimaClub(CBaseHostClass):
             printDBG('No dropdown menu found')
             return
 
-        # Extract all category <li> blocks
-        cat_blocks = self.cm.ph.getAllItemsBeetwenMarkers(tmp, '<li', '</li>')
-        printDBG('Found %d categories' % len(cat_blocks))
+        # Extract all category <li> items
+        cat_items = self.cm.ph.getAllItemsBeetwenMarkers(tmp, '<li', '</li>')
+        printDBG('Found %d categories' % len(cat_items))
 
-        for item in cat_blocks:
+        for item in cat_items:
             cat_id = self.cm.ph.getSearchGroups(item, r'data-cat="([^"]+)"')[0]
             cat_name = self.cleanHtmlStr(self.cm.ph.getDataBeetwenMarkers(item, '<span', '</span>')[1])
             if not cat_name or cat_name == '.':
@@ -172,25 +172,53 @@ class CimaClub(CBaseHostClass):
             return
 
         # Extract each movie box cleanly
-        blocks = self.cm.ph.getAllItemsBeetwenMarkers(data, '<div class="Small--Box">', '</div>')
-        printDBG('Found %d items' % len(blocks))
+        items = self.cm.ph.getAllItemsBeetwenMarkers(data, '<div class="Small--Box">', '</inner--title>')
+        printDBG('Found %d items' % len(items))
 
-        for block in blocks:
-            url = self.cm.ph.getSearchGroups(block, r'href="([^"]+)"')[0]
-            icon = self.cm.ph.getSearchGroups(block, r'data-src="([^"]+)"')[0]
+        for item in items:
+            url = self.cm.ph.getSearchGroups(item, r'href="([^"]+)"')[0]
+            icon = self.cm.ph.getSearchGroups(item, r'data-src="([^"]+)"')[0]
             if not icon:
-                icon = self.cm.ph.getSearchGroups(block, r'src="([^"]+)"')[0]
+                icon = self.cm.ph.getSearchGroups(item, r'src="([^"]+)"')[0]
 
-            title = self.cleanHtmlStr(self.cm.ph.getSearchGroups(block, r'title="([^"]+)"')[0]).replace("مترجم اون لاين", "")
-            desc = self.cleanHtmlStr(self.cm.ph.getDataBeetwenMarkers(block, '<p>', '</p>', False)[1])
-            quality = self.cleanHtmlStr(self.cm.ph.getDataBeetwenMarkers(block, '<span style=', '</span>', False)[1])
+            title = self.cleanHtmlStr(self.cm.ph.getSearchGroups(item, r'title="([^"]+)"')[0]).replace("مترجم اون لاين", "").replace("فيلم", "").replace("مسلسل", "").replace("مترجمة", "").replace("مترجم", "").strip()
+
+
+            desc = self.cleanHtmlStr(self.cm.ph.getDataBeetwenMarkers(item, '<p>', '</p>', False)[1])
+            quality = self.cleanHtmlStr(
+                self.cm.ph.getDataBeetwenMarkers(item, '<span style="background: #563e7d;">', '</span>', False)[1]
+            ).strip()
+
+            ###################################################
+            # COLORIZE TITLE (movie name + year)
+            ###################################################
+            match = re.search(r'(.*?)(\d{4})$', title)
+            if match:
+                movie_title = match.group(1).strip()
+                movie_year = match.group(2)
+                colored_title = f"{E2ColoR('yellow')}{movie_title} {E2ColoR('cyan')}{movie_year}{E2ColoR('white')}"
+            else:
+                colored_title = f"{E2ColoR('yellow')}{title}{E2ColoR('white')}"
+
+            ###################################################
+            # COLORIZE QUALITY
+            ###################################################
+            q_color = 'white'
+            if re.search(r'4K|1080|HD|BluRay', quality, re.I):
+                q_color = 'green'
+            elif re.search(r'720|HDRip|WEB', quality, re.I):
+                q_color = 'yellow'
+            elif re.search(r'CAM|TS|HDCAM', quality, re.I):
+                q_color = 'red'
+
+            colored_quality = f"{E2ColoR(q_color)}{quality}{E2ColoR('white')}"
 
             params = dict(cItem)
             params.update({
-                'title': title,
+                'title': colored_title,
                 'url': self.getFullUrl(url),
                 'icon': self.getFullUrl(icon),
-                'desc': '%s | %s' % (quality, desc),
+                'desc': '%s | %s' % (colored_quality, desc),
                 'category': 'explore_items'
             })
             self.addDir(params)
@@ -210,7 +238,6 @@ class CimaClub(CBaseHostClass):
         # MAIN MOVIE BLOCK
         ###################################################
         main_block = self.cm.ph.getDataBeetwenMarkers(data, '<div class="BlocksHolder"', '<div class="pagination">', False)[1]
-        #printDBG('main_block.listUnits >>> %s' % main_block)
         if not main_block:
             main_block = self.cm.ph.getDataBeetwenMarkers(data, '<div id="MainFiltar"', '</div>', False)[1]
 
@@ -221,8 +248,7 @@ class CimaClub(CBaseHostClass):
         ###################################################
         # MOVIE BOXES
         ###################################################
-        items = self.cm.ph.getAllItemsBeetwenMarkers(main_block, '<div class="Small--Box', '</div>')
-        #printDBG('items.listUnits >>> %s' % items)
+        items = self.cm.ph.getAllItemsBeetwenMarkers(main_block, '<div class="Small--Box">', '</inner--title>')
         printDBG('listUnits: Found %d items' % len(items))
 
         for item in items:
@@ -234,19 +260,54 @@ class CimaClub(CBaseHostClass):
             if not icon:
                 icon = self.cm.ph.getSearchGroups(item, r'src="([^"]+)"')[0]
 
-            title = self.cleanHtmlStr(self.cm.ph.getSearchGroups(item, r'title="([^"]+)"')[0])
-            if not title:
-                title = self.cleanHtmlStr(self.cm.ph.getDataBeetwenMarkers(item, '<h2>', '</h2>', False)[1])
+            # --- Clean and normalize title ---
+            title = self.cleanHtmlStr(self.cm.ph.getSearchGroups(item, r'title="([^"]+)"')[0]).replace("مترجم اون لاين", "").replace("فيلم", "").replace("مسلسل", "").replace("مترجمة", "").replace("مترجم", "").strip()
 
+            # --- Description & Quality ---
             desc = self.cleanHtmlStr(self.cm.ph.getDataBeetwenMarkers(item, '<p>', '</p>', False)[1])
-            quality = self.cleanHtmlStr(self.cm.ph.getDataBeetwenMarkers(item, '<span style=', '</span>', False)[1])
+            quality = self.cleanHtmlStr(
+                self.cm.ph.getDataBeetwenMarkers(item, '<span', '</span>', False)[1]
+            ).strip()
 
+            ###################################################
+            # COLORIZE TITLE (movie name + year)
+            ###################################################
+            match = re.search(r'(.+?)\s*(\d{4})$', title)
+            if match:
+                movie_title = match.group(1).strip()
+                movie_year = match.group(2).strip()
+                colored_title = (
+                    f"{E2ColoR('yellow')}{movie_title} "
+                    f"{E2ColoR('cyan')}{movie_year}"
+                    f"{E2ColoR('white')}"
+                )
+            else:
+                colored_title = f"{E2ColoR('yellow')}{title}{E2ColoR('white')}"
+
+            ###################################################
+            # COLORIZE QUALITY (with fallback)
+            ###################################################
+            q_color = 'white'
+            if re.search(r'4K|1080|BluRay', quality, re.I):
+                q_color = 'green'
+            elif re.search(r'720|HDRip|WEB', quality, re.I):
+                q_color = 'yellow'
+            elif re.search(r'CAM|TS|HDCAM', quality, re.I):
+                q_color = 'red'
+
+            colored_quality = (
+                f"{E2ColoR(q_color)}{quality if quality else 'N/A'}{E2ColoR('white')}"
+            )
+
+            ###################################################
+            # FINAL ITEM
+            ###################################################
             params = dict(cItem)
             params.update({
-                'title': title.replace("مترجم اون لاين", "").strip(),
+                'title': colored_title,
                 'url': self.getFullUrl(url),
                 'icon': self.getFullUrl(icon),
-                'desc': '%s | %s' % (quality, desc),
+                'desc': f"{colored_quality} | {desc}",
                 'category': 'explore_items'
             })
             self.addDir(params)
@@ -304,7 +365,7 @@ class CimaClub(CBaseHostClass):
             printDBG('No watch list found')
             return
 
-        # Get all <li> blocks between markers
+        # Get all <li> items between markers
         li_items = self.cm.ph.getAllItemsBeetwenMarkers(watch_list, '<li', '</li>')
         printDBG('li_items.exploreItems >>> %s' % li_items)
         printDBG('Found %d servers' % len(li_items))
@@ -373,7 +434,6 @@ class CimaClub(CBaseHostClass):
                 'category': 'explore_items'
             })
             self.addDir(params)
-
 
     def handleService(self, index, refresh=0, searchPattern='', searchType=''):
         printDBG('CimaClub.handleService start')
