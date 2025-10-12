@@ -39,6 +39,9 @@ URLPARSER_LINES="
 'mivalyo.com': self.pp.parserJWPLAYER,
 'vidshare.space': self.pp.parserJWPLAYER,
 'vidhidefun.com': self.pp.parserJWPLAYER,
+'cdn4.1vid1shar.space': self.pp.parserJWPLAYER,
+'xcv2.goveed1.space': self.pp.parserJWPLAYER,
+'vbn2.vdbtm.shop': self.pp.parserJWPLAYER,
 'updown.icu': self.pp.parserJWPLAYER
 "
 # --------------------------
