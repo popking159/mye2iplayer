@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Last modified: 12/10/2025 - popking (odem2014)
+# Last modified: 13/10/2025 - popking (odem2014)
 # typical import for a standard host
 ###################################################
 # LOCAL import
@@ -35,7 +35,7 @@ class ArabLionzTV(CBaseHostClass):
         CBaseHostClass.__init__(self, {'history': 'arablionztv', 'cookie': 'arablionztv.cookie'})
         self.MAIN_URL = gettytul()
         self.SEARCH_URL = self.MAIN_URL + 'search'
-        self.DEFAULT_ICON_URL = "https://i.pinimg.com/originals/f2/67/05/f267052cb0ba96d70dd21e41a20a522e.jpg"
+        self.DEFAULT_ICON_URL = "https://raw.githubusercontent.com/popking159/mye2iplayer/refs/heads/main/arablionzlogo.png"
         self.HEADER = self.cm.getDefaultHeader(browser='chrome')
         self.defaultParams = {
             'header': self.HEADER,
@@ -357,23 +357,178 @@ class ArabLionzTV(CBaseHostClass):
     # SEARCH
     ###################################################
     def listSearchResult(self, cItem, searchPattern, searchType):
-        printDBG("ArabLionzTV.listSearchResult searchPattern[%s] searchType[%s]" % (searchPattern, searchType))
-        post_data = {'search': searchPattern}
-        sts, data = self.getPage(self.SEARCH_URL, post_data=post_data)
-        if not sts:
+        printDBG("ArabLionzTV.listSearchResult cItem[%s], searchPattern[%s] searchType[%s]" % (cItem, searchPattern, searchType))
+        cItem = dict(cItem)
+        cItem['search_pattern'] = searchPattern
+        cItem['category'] = 'list_search_units'
+        self.listSearchUnits(cItem)
+
+    def listSearchUnits(self, cItem):
+        printDBG('ArabLionzTV.listSearchUnits >>> %s' % cItem)
+        
+        searchPattern = cItem.get('search_pattern', '')
+        if not searchPattern:
+            printDBG('listSearchUnits: No search pattern provided')
             return
 
-        results = re.findall(r'<a href="([^"]+)" title="([^"]+)" class="recent--block".*?data-src="([^"]+)"', data, re.S)
-        for (url, title, icon) in results:
+        # Build search URL - note the POST endpoint format
+        search_url = self.getFullUrl('/SearchEngine/') + urllib_quote_plus(searchPattern)
+        printDBG('listSearchUnits: search_url = %s' % search_url)
+
+        # Prepare POST headers (similar to browser example)
+        post_headers = dict(self.HEADER)
+        post_headers.update({
+            'X-Requested-With': 'XMLHttpRequest',
+            'Referer': self.MAIN_URL + 'tv/',  # As per browser example
+            'Origin': self.MAIN_URL,
+            'Content-Length': '0'  # No payload as shown in example
+        })
+
+        params = dict(self.defaultParams)
+        params.update({'header': post_headers})
+
+        # Make POST request (empty post_data as per example)
+        sts, data = self.getPage(search_url, addParams=params, post_data={})
+        if not sts or not data:
+            printDBG('listSearchUnits: failed to load search results')
+            return
+
+        printDBG('listSearchUnits: search data length = %d' % len(data))
+
+        ###################################################
+        # PARSE SEARCH RESULTS
+        ###################################################
+        
+        # Extract the grid containing search results
+        grid_block = self.cm.ph.getDataBeetwenMarkers(data, '<div class="Grid--ArabLionz">', '</postsscrollloader>', False)[1]
+        printDBG('listSearchUnits: grid_block length = %d' % len(grid_block))
+
+        # Extract individual items
+        items = self.cm.ph.getAllItemsBeetwenMarkers(grid_block, '<div class="Posts--Single--Box">', '</inner--title>')
+        printDBG('listSearchUnits: Found %d search items' % len(items))
+
+        for item in items:
+            # Get URL from the <a> tag
+            url = self.cm.ph.getSearchGroups(item, r'href="([^"]+)"')[0]
+            if not url:
+                continue
+
+            # Get icon - try data-image first, then src
+            icon = self.cm.ph.getSearchGroups(item, r'data-image="([^"]+)"')[0]
+            if not icon:
+                icon = self.cm.ph.getSearchGroups(item, r'src="([^"]+)"')[0]
+
+            # Get title - try title attribute first, then h2 content
+            title = self.cleanHtmlStr(self.cm.ph.getSearchGroups(item, r'title="([^"]+)"')[0])
+            if not title:
+                title_data = self.cm.ph.getDataBeetwenMarkers(item, '<h2>', '</h2>', False)[1]
+                title = self.cleanHtmlStr(title_data)
+
+            # Exclude unwanted titles
+            if not title or any(excluded.lower() in title.lower() for excluded in ['IPTV', 'Shof TV']):
+                printDBG('listSearchUnits: Skipped excluded title -> %s' % title)
+                continue
+                
+            # Get genre/category
+            genre_data = self.cm.ph.getDataBeetwenMarkers(item, '<div class="category">', '</div>', False)
+            genre = self.cleanHtmlStr(genre_data[1]) if genre_data[0] else ''
+            
+            # Clean title
+            title = title.replace("مترجمة اون لاين", "").replace("مترجم اون لاين", "").replace("فيلم", "").replace("مسلسل", "").replace("مترجمة", "").replace("مترجم", "").replace("مشاهدة", "").replace("اون لاين", "").strip()
+            printDBG('title.listSearchUnits >>> %s' % title)
+            
+            # Get description
+            desc_data = self.cm.ph.getDataBeetwenMarkers(item, '<p>', '</p>', False)
+            desc = self.cleanHtmlStr(desc_data[1]) if desc_data[0] else ''
+
+            # Get quality from span
+            quality_data = self.cm.ph.getDataBeetwenMarkers(item, '<span>', '</span>', False)
+            quality = self.cleanHtmlStr(quality_data[1]) if quality_data[0] else ''
+
+            ###################################################
+            # COLORIZE TITLE WITH YEAR ANYWHERE
+            ###################################################
+            # Find year anywhere in the title
+            year_match = re.search(r'(\d{4})', title)
+            if year_match:
+                year = year_match.group(1)
+                # Split title around the year
+                parts = re.split(r'(\d{4})', title, 1)
+                if len(parts) == 3:
+                    before_year = parts[0].strip()
+                    after_year = parts[2].strip()
+                    
+                    if before_year and after_year:
+                        colored_title = f"{E2ColoR('yellow')}{before_year} {E2ColoR('cyan')}{year}{E2ColoR('yellow')} {after_year}{E2ColoR('white')}"
+                    elif before_year:
+                        colored_title = f"{E2ColoR('yellow')}{before_year} {E2ColoR('cyan')}{year}{E2ColoR('white')}"
+                    else:
+                        colored_title = f"{E2ColoR('cyan')}{year} {E2ColoR('yellow')}{after_year}{E2ColoR('white')}"
+                else:
+                    colored_title = f"{E2ColoR('yellow')}{title}{E2ColoR('white')}"
+            else:
+                colored_title = f"{E2ColoR('yellow')}{title}{E2ColoR('white')}"
+
+            ###################################################
+            # COLORIZE QUALITY AND GENRE
+            ###################################################
+            desc_parts = []
+            
+            # Colorize quality
+            if quality:
+                q_color = 'white'
+                if re.search(r'4K|1080|HD|BluRay', quality, re.I):
+                    q_color = 'green'
+                elif re.search(r'720|HDRip|WEB', quality, re.I):
+                    q_color = 'yellow'
+                elif re.search(r'CAM|TS|HDCAM', quality, re.I):
+                    q_color = 'red'
+                colored_quality = f"{E2ColoR(q_color)}{quality}{E2ColoR('white')}"
+                desc_parts.append(colored_quality)
+            
+            # Colorize genre
+            if genre:
+                colored_genre = f"{E2ColoR('lightblue')}{genre}{E2ColoR('white')}"
+                desc_parts.append(colored_genre)
+            
+            # Add description if available
+            if desc:
+                desc_parts.append(desc)
+            
+            desc_text = ' | '.join(desc_parts) if desc_parts else ''
+
             params = dict(cItem)
             params.update({
-                'title': self.cleanHtmlStr(title),
+                'title': colored_title,
                 'url': self.getFullUrl(url),
                 'icon': self.getFullUrl(icon),
+                'desc': desc_text,
                 'category': 'explore_items'
             })
             self.addDir(params)
 
+        ###################################################
+        # HANDLE "LOAD MORE" FOR SEARCH RESULTS
+        ###################################################
+        load_more_block = self.cm.ph.getDataBeetwenMarkers(data, '<postsscrollloader', '</postsscrollloader>', False)[1]
+        if load_more_block:
+            load_more_url = self.cm.ph.getSearchGroups(load_more_block, r'href="([^"]+)"')[0]
+            if load_more_url:
+                params = dict(cItem)
+                params.update({
+                    'title': _('المزيد من النتائج') + ' >>>',
+                    'url': self.getFullUrl(load_more_url),
+                    'category': 'list_units'
+                })
+                self.addDir(params)
+                printDBG('listSearchUnits: Found load more URL %s' % load_more_url)
+
+        if len(self.currList) == 0:
+            printDBG('listSearchUnits: No search results found')
+            self.addDir({
+                'title': _('لم يتم العثور على نتائج لـ: %s') % searchPattern,
+                'category': None
+            })
 
     def handleService(self, index, refresh=0, searchPattern='', searchType=''):
         printDBG('ArabLionzTV.handleService start')
@@ -401,9 +556,8 @@ class ArabLionzTV(CBaseHostClass):
             self.listUnits(self.currItem)
         elif category == 'list_series':
             self.listUnits(self.currItem)
-        elif category == 'search':
-            self.listSearchResult(cItem, cItem.get('search_pattern', ''), cItem.get('search_type', ''))
-
+        elif category == 'list_search_units':
+            self.listSearchUnits(self.currItem)
         # SEARCH
         elif category in ["search", "search_next_page"]:
             cItem = dict(self.currItem)
