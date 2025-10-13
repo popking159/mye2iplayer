@@ -423,21 +423,85 @@ class CimaClub(CBaseHostClass):
     # SEARCH
     ###################################################
     def listSearchResult(self, cItem, searchPattern, searchType):
-        printDBG("CimaClub.listSearchResult searchPattern[%s] searchType[%s]" % (searchPattern, searchType))
-        post_data = {'search': searchPattern}
-        sts, data = self.getPage(self.SEARCH_URL, post_data=post_data)
+        printDBG("CimaClub.listSearchResult cItem[%s], searchPattern[%s] searchType[%s]" % (cItem, searchPattern, searchType))
+        cItem = dict(cItem)
+        cItem['url'] = self.getFullUrl('?s=') + urllib_quote_plus(searchPattern)
+        self.listUnits(cItem)
+
+    def listSearchItems(self, cItem):
+        printDBG("CimaClub.listSearchItems [%s]" % cItem)
+        sts, data = self.getPage(cItem['url'])
+        printDBG("data.listSearchItems [%s]" % data)
         if not sts:
             return
+        tmp = self.cm.ph.getDataBeetwenMarkers(data, '<div class="series__list">', '<div class="paginate">', False)[1]
+        printDBG("tmp.listSearchItems [%s]" % tmp)
+        data_items = self.cm.ph.getAllItemsBeetwenMarkers(tmp, '<li class="box__xs__2', '</li>')
+        printDBG("data_items.listSearchItems [%s]" % data_items)
 
-        results = re.findall(r'<a href="([^"]+)" title="([^"]+)" class="recent--block".*?data-src="([^"]+)"', data, re.S)
-        for (url, title, icon) in results:
-            params = dict(cItem)
-            params.update({
-                'title': self.cleanHtmlStr(title),
-                'url': self.getFullUrl(url),
-                'icon': self.getFullUrl(icon),
-                'category': 'explore_items'
-            })
+        for m in data_items:
+            # Extract basic info
+            title = self.cm.ph.getSearchGroups(m, r'title=[\'"]([^\'"]+)[\'"]')[0]
+            pureurl = self.cm.ph.getSearchGroups(m, r'href=[\'"]([^\'"]+)[\'"]')[0]
+            pureicon = self.cm.ph.getSearchGroups(m, r'data-src=[\'"]([^\'"]+)[\'"]')[0]
+
+            # Fix URLs safely
+            if pureurl:
+                baseurl, filenameurl = pureurl.rsplit('/', 1)
+                fixedfilenameurl = urllib_quote_plus(filenameurl)
+                url = baseurl + "/" + fixedfilenameurl + "watch/"
+            else:
+                url = ''
+
+            if pureicon:
+                baseicon, filenameicon = pureicon.rsplit('/', 1)
+                fixedfilenameicon = urllib_quote_plus(filenameicon)
+                icon = baseicon + "/" + fixedfilenameicon
+            else:
+                icon = ''
+
+            ###################################################
+            # Extract genre, quality, and story
+            ###################################################
+            genre = self.cleanHtmlStr(self.cm.ph.getDataBeetwenMarkers(m, '<div class="__genre hide__md">', '</div>', False)[1]).strip()
+            quality = self.cleanHtmlStr(self.cm.ph.getDataBeetwenMarkers(m, '<div class="__quality hide__md">', '</div>', False)[1]).strip()
+            story = self.cleanHtmlStr(self.cm.ph.getDataBeetwenMarkers(m, '<p>', '</p>', False)[1]).strip()
+
+            # Build combined description
+            desc_parts = []
+            if genre:
+                desc_parts.append(f"{E2ColoR('yellow')}Genre:{E2ColoR('white')} {genre}")
+            if quality:
+                q_color = 'white'
+                if re.search(r'4K|1080|HD|BluRay', quality, re.I):
+                    q_color = 'green'
+                elif re.search(r'720|HDRip|WEB', quality, re.I):
+                    q_color = 'orange'
+                elif re.search(r'CAM|TS|HDCAM', quality, re.I):
+                    q_color = 'red'
+                desc_parts.append(f"{E2ColoR('yellow')}Quality:{E2ColoR('white')} {E2ColoR(q_color)}{quality}{E2ColoR('white')}")
+            if story:
+                desc_parts.append(f"{E2ColoR('yellow')}Story:{E2ColoR('white')} {story}")
+
+            desc = " | ".join(desc_parts)
+
+            ###################################################
+            # Colorize title (movie name + year)
+            ###################################################
+            colored_title = self.colorizeTitle(title)
+
+            ###################################################
+            # Final item
+            ###################################################
+            params = {
+                'category': 'explore_item',
+                'title': colored_title,
+                'icon': icon,
+                'url': url,
+                'desc': desc
+            }
+
+            printDBG(str(params))
             self.addDir(params)
 
     def handleService(self, index, refresh=0, searchPattern='', searchType=''):
@@ -468,9 +532,6 @@ class CimaClub(CBaseHostClass):
             self.listUnits(self.currItem)
         elif category == 'list_series':
             self.listUnits(self.currItem)
-        elif category == 'search':
-            self.listSearchResult(cItem, cItem.get('search_pattern', ''), cItem.get('search_type', ''))
-
         # SEARCH
         elif category in ["search", "search_next_page"]:
             cItem = dict(self.currItem)
