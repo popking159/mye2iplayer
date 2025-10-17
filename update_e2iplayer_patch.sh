@@ -44,6 +44,8 @@ URLPARSER_LINES="
 'xcv2.goveed1.space': self.pp.parserJWPLAYER,
 'vbn2.vdbtm.shop': self.pp.parserJWPLAYER,
 'uqload.io': self.pp.parserJWPLAYER,
+'dingtezuni.com': self.pp.parserJWPLAYER,
+'dsvplay.com': self.pp.parserDOOD,
 'updown.icu': self.pp.parserJWPLAYER
 "
 # --------------------------
