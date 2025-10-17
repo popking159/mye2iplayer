@@ -23,7 +23,7 @@ URLPARSER_FILE="$PLUGIN_DIR/libs/urlparser.py"
 # --------------------------
 
 # Hosts to update or add (with "host" prefix)
-NEW_HOSTS_NAMES="hosttopcinema hosttuktukcam hostarabseed hostcimaclub hostarablionz hostwecima hostxtream"
+NEW_HOSTS_NAMES="hosttopcinema hosttuktukcam hostarabseed hostcimaclub hostarablionz hostwecima hostxtream hostmycima"
 
 # Host → domain mapping for aliases.txt
 HOSTS_DOMAINS="
@@ -33,6 +33,7 @@ hostarabseed=https://a.asd.homes/
 hostcimaclub=https://ciimaclub.club/
 hostarablionz=https://arablionztv.online/
 hostwecima=https://cima.wecima.show/
+hostmycima=https://mycima.guru/
 hostxtream=Xtream
 "
 
