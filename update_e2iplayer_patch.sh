@@ -275,7 +275,7 @@ echo "🧩 Checking Xtream IPTV configuration in $CONFIG_FILE..." | tee -a "$LOG
 if [ -f "$CONFIG_FILE" ]; then
     if ! grep -q "xtream_host" "$CONFIG_FILE"; then
         echo "➕ Adding Xtream IPTV ConfigText definitions..." | tee -a "$LOG_FILE"
-        sed -i '/config.plugins.iptvplayer.napisy24pl_password/a\
+        sed -i '/config.plugins.iptvplayer.napisy24pl_password = ConfigText/a\
 config.plugins.iptvplayer.xtream_host = ConfigText(default="", fixed_size=False)\nconfig.plugins.iptvplayer.xtream_username = ConfigText(default="", fixed_size=False)\nconfig.plugins.iptvplayer.xtream_password = ConfigText(default="", fixed_size=False)\n' "$CONFIG_FILE"
     else
         echo "ℹ️  Xtream IPTV ConfigText already present." | tee -a "$LOG_FILE"
