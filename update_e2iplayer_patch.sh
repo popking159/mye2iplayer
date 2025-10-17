@@ -33,7 +33,7 @@ hostarabseed=https://a.asd.homes/
 hostcimaclub=https://ciimaclub.club/
 hostarablionz=https://arablionztv.online/
 hostwecima=https://cima.wecima.show/
-hostxtream:Xtream
+hostxtream=Xtream
 "
 
 # Lines to add into urlparser.py under self.hostMap = {
