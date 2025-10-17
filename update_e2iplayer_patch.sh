@@ -269,7 +269,7 @@ else
 fi
 
 # Step X: Ensure Xtream IPTV configuration exists
-CONFIG_FILE="$PLUGIN_DIR/iptvconfigmenu.py"
+CONFIG_FILE="$PLUGIN_DIR/components/iptvconfigmenu.py"
 echo "🧩 Checking Xtream IPTV configuration in $CONFIG_FILE..." | tee -a "$LOG_FILE"
 
 if [ -f "$CONFIG_FILE" ]; then
