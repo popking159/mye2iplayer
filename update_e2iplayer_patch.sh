@@ -43,6 +43,7 @@ URLPARSER_LINES="
 'cdn4.1vid1shar.space': self.pp.parserJWPLAYER,
 'xcv2.goveed1.space': self.pp.parserJWPLAYER,
 'vbn2.vdbtm.shop': self.pp.parserJWPLAYER,
+'uqload.io': self.pp.parserJWPLAYER,
 'updown.icu': self.pp.parserJWPLAYER
 "
 # --------------------------
