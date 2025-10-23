@@ -23,25 +23,15 @@ URLPARSER_FILE="$PLUGIN_DIR/libs/urlparser.py"
 # --------------------------
 
 # Hosts to update or add (with "host" prefix)
-NEW_HOSTS_NAMES="hosttopcinema hosttuktukcam hostarabseed hostcimaclub hostarablionz hostwecima hostxtream hostmycima"
+NEW_HOSTS_NAMES="hostcimanow"
 
 # Host → domain mapping for aliases.txt
 HOSTS_DOMAINS="
-hosttopcinema=https://topcinema.buzz/
-hosttuktukcam=https://tuk.cam/
-hostarabseed=https://a.asd.homes/
-hostcimaclub=https://ciimaclub.club/
-hostarablionz=https://arablionztv.online/
-hostwecima=https://cima.wecima.show/
-hostmycima=https://mycima.guru/
-hostxtream=Xtream
+hostcimanow=https://cimanow.cc/
 "
 
 # Lines to add into urlparser.py under self.hostMap = {
 URLPARSER_LINES="
-'uqload.io': self.pp.parserJWPLAYER,
-'dingtezuni.com': self.pp.parserJWPLAYER,
-'dsvplay.com': self.pp.parserDOOD
 "
 # --------------------------
 
@@ -267,30 +257,6 @@ if [ -f "$URLPARSER_FILE" ]; then
     fi
 else
     echo "⚠️  urlparser.py not found at: $URLPARSER_FILE" | tee -a "$LOG_FILE"
-fi
-
-# Step X: Ensure Xtream IPTV configuration exists
-CONFIG_FILE="$PLUGIN_DIR/components/iptvconfigmenu.py"
-echo "🧩 Checking Xtream IPTV configuration in $CONFIG_FILE..." | tee -a "$LOG_FILE"
-
-if [ -f "$CONFIG_FILE" ]; then
-    if ! grep -q "xtream_host" "$CONFIG_FILE"; then
-        echo "➕ Adding Xtream IPTV ConfigText definitions..." | tee -a "$LOG_FILE"
-        sed -i '/config.plugins.iptvplayer.napisy24pl_password = ConfigText/a\
-config.plugins.iptvplayer.xtream_host = ConfigText(default="", fixed_size=False)\nconfig.plugins.iptvplayer.xtream_username = ConfigText(default="", fixed_size=False)\nconfig.plugins.iptvplayer.xtream_password = ConfigText(default="", fixed_size=False)\n' "$CONFIG_FILE"
-    else
-        echo "ℹ️  Xtream IPTV ConfigText already present." | tee -a "$LOG_FILE"
-    fi
-
-    if ! grep -q "Xtream Host" "$CONFIG_FILE"; then
-        echo "➕ Adding Xtream IPTV section to configuration menu..." | tee -a "$LOG_FILE"
-        sed -i '/list.append(getConfigListEntry("http:\/\/1fichier.com\/ ".*fichiercom_password))/a\
-        list.append(getConfigListEntry(_("----- XTREAM IPTV CONFIGURATION -----"), ))\n        list.append(getConfigListEntry(_("Xtream Host (e.g. http://example.com:8080)"), config.plugins.iptvplayer.xtream_host))\n        list.append(getConfigListEntry(_("Xtream Username"), config.plugins.iptvplayer.xtream_username))\n        list.append(getConfigListEntry(_("Xtream Password"), config.plugins.iptvplayer.xtream_password))\n' "$CONFIG_FILE"
-    else
-        echo "ℹ️  Xtream IPTV menu entries already present." | tee -a "$LOG_FILE"
-    fi
-else
-    echo "⚠️  iptvconfigmenu.py not found at: $CONFIG_FILE" | tee -a "$LOG_FILE"
 fi
 
 # Step 8: Final cleanup and sorting
