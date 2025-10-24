@@ -23,7 +23,7 @@ URLPARSER_FILE="$PLUGIN_DIR/libs/urlparser.py"
 # --------------------------
 
 # Hosts to update or add (with "host" prefix)
-NEW_HOSTS_NAMES="hostegydead"
+NEW_HOSTS_NAMES="hostegydead hostcimanow"
 
 # Host → domain mapping for aliases.txt
 HOSTS_DOMAINS="
