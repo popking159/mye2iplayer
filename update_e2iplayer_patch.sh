@@ -23,16 +23,15 @@ URLPARSER_FILE="$PLUGIN_DIR/libs/urlparser.py"
 # --------------------------
 
 # Hosts to update or add (with "host" prefix)
-NEW_HOSTS_NAMES="hostegydead hostcimanow"
+NEW_HOSTS_NAMES="hosttorrentyts"
 
 # Host → domain mapping for aliases.txt
 HOSTS_DOMAINS="
-hostegydead=https://a.egydead.space/
+hosttorrentyts=Torrent Client
 "
 
 # Lines to add into urlparser.py under self.hostMap = {
 URLPARSER_LINES="
-"forafile.com": self.pp.parserJWPLAYER,
 "
 # --------------------------
 
