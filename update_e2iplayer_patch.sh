@@ -23,11 +23,12 @@ URLPARSER_FILE="$PLUGIN_DIR/libs/urlparser.py"
 # --------------------------
 
 # Hosts to update or add (with "host" prefix)
-NEW_HOSTS_NAMES="hosttorrentyts"
+NEW_HOSTS_NAMES="hosttorrentyts hosttorrenteztv"
 
 # Host → domain mapping for aliases.txt
 HOSTS_DOMAINS="
-hosttorrentyts=Torrent Client
+hosttorrentyts=Torrent YTS
+hosttorrenteztv=Torrent EZTV
 "
 
 # Lines to add into urlparser.py under self.hostMap = {
