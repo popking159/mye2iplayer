@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 ###################################################
-#  TorrentYTS Host for E2iPlayer (YTS + TorrServer)
+#  TorrentYTS Host for E2iPlayer (EZTV + TorrServer)
 #  Compatible with Python 2.7 / 3.x
 #  Last modified: 29/10/2025 - popking (odem2014)
 ###################################################
@@ -53,23 +53,23 @@ def GetConfigList():
     return optionList
 
 def gettytul():
-    return 'https://yts.mx/'  # main url of host
+    return 'https://eztv.tf/'  # main url of host
 
 ###################################################
 # MAIN HOST CLASS
 ###################################################
-class TorrentYTSHost(CBaseHostClass):
+class TorrentEZTVHost(CBaseHostClass):
 
     def __init__(self):
-        CBaseHostClass.__init__(self, {'history': 'yts.torrent', 'cookie': 'yts.cookie'})
-        self.MAIN_URL = 'https://yts.mx'
-        self.SEARCH_URL = self.MAIN_URL + '/browse-movies/'
+        CBaseHostClass.__init__(self, {'history': 'eztv.torrent', 'cookie': 'eztv.cookie'})
+        self.MAIN_URL = 'https://eztv.tf'
+        self.SEARCH_URL = self.MAIN_URL + '/search/'
         # --- TorrServer Configuration ---
         self.TORSERVER_PORT = 8090
         self.TORSERVER_IP = "127.0.0.1"
         self.TORSERVER_PATH = "/media/hdd/TorrServer"
         self.TORSERVER_CONFIG = "/media/hdd/config"
-        self.DEFAULT_ICON_URL = 'https://raw.githubusercontent.com/popking159/mye2iplayer/refs/heads/main/torrentyts.jpg'
+        self.DEFAULT_ICON_URL = 'https://raw.githubusercontent.com/popking159/mye2iplayer/refs/heads/main/torrenteztv.jpg'
         self.updateTorServerUrl()
 
     def updateTorServerUrl(self):
@@ -153,15 +153,9 @@ class TorrentYTSHost(CBaseHostClass):
     # LISTING
     ###################################################
     def listMainMenu(self, cItem):
-        printDBG('TorrentYTSHost.listMainMenu')
+        printDBG('TorrentEZTVHost.listMainMenu')
         MAIN_CAT_TAB = [
-            {'category': 'list_movies', 'title': _('Movies'), 'url': self.getFullUrl('/browse-movies')},
-            {'category': 'list_movies', 'title': _('Trending'), 'url': self.getFullUrl('/trending-movies')},
-            {'category': 'list_movies', 'title': _('4K'), 'url': self.getFullUrl('/browse-movies/0/2160p/all/0/latest/0/all')},
-            {'category': 'list_movies', 'title': _('Horror'), 'url': self.getFullUrl('/browse-movies/0/all/horror/0/latest/0/all')},
-            {'category': 'list_movies', 'title': _('Action'), 'url': self.getFullUrl('/browse-movies/0/all/action/0/latest/0/all')},
-            {'category': 'list_movies', 'title': _('Comedy'), 'url': self.getFullUrl('/browse-movies/0/all/comedy/0/latest/0/all')},
-            {'category': 'list_movies', 'title': _('Drama'), 'url': self.getFullUrl('/browse-movies/0/all/drama/0/latest/0/all')},
+            {'category': 'list_movies', 'title': _('Series'), 'url': self.getFullUrl('/home')},
         ] + self.searchItems()
         self.listsTab(MAIN_CAT_TAB, cItem)
 
@@ -169,141 +163,229 @@ class TorrentYTSHost(CBaseHostClass):
     # LIST MOVIES
     ###################################################
     def listMovies(self, cItem):
-        printDBG("TorrentYTSHost.listMovies url[%s]" % cItem.get('url', ''))
+        printDBG("TorrentEZTVHost.listMovies url[%s]" % cItem.get('url', ''))
         sts, data = self.cm.getPage(cItem.get('url', ''))
         if not sts or not data:
             return
 
         try:
-            main_block = self.cm.ph.getDataBeetwenMarkers(data, '<section', '</section>', False)[1]
+            main_block_series = self.cm.ph.getAllItemsBeetwenMarkers(
+                data, '<tr class="forum_space_border">', '</table>', False
+            )[0]
         except Exception:
-            main_block = data
+            main_block_series = data
 
-        items = self.cm.ph.getAllItemsBeetwenMarkers(main_block, '<div class="browse-movie-wrap', '</div>', False)
-
-        printDBG("Found %d movie items" % len(items))
+        items = self.cm.ph.getAllItemsBeetwenMarkers(main_block_series, '<tr name="hover"', '</tr>', False)
+        printDBG("Found %d serie items" % len(items))
 
         for item in items:
             try:
-                # title from alt (may contain "(YEAR)" and "download")
-                raw_title = self.cm.ph.getSearchGroups(item, r'alt="([^"]+)"')[0]
-                if not raw_title:
+                # --- Extract episode URLs (/ep/...)
+                url = self.cm.ph.getSearchGroups(item, r'href="(/ep/[^"]+)"')[0]
+                if not url:
                     continue
-                raw_title = raw_title.replace('download', '').strip()
+                full_url = self.MAIN_URL + url
 
-                # split into title and year if present
-                match = re.search(r'(.+?)\s*\(?(\d{4})\)?$', raw_title)
-                if match:
-                    movie_title = match.group(1).strip()
-                    movie_year = match.group(2).strip()
-                else:
-                    movie_title = raw_title
-                    movie_year = ''
+                # --- Extract title
+                title = self.cm.ph.getSearchGroups(item, r'class="epinfo"[^>]*>([^<]+)<')[0].strip()
+                if not title:
+                    title = self.cm.ph.getSearchGroups(item, r'title="([^"]+)"')[0].strip()
 
-                # url & icon
-                url = self.cm.ph.getSearchGroups(item, r'href="([^"]+)"')[0]
-                icon = self.cm.ph.getSearchGroups(item, r'src="([^"]+)"')[0]
+                if not title:
+                    continue
 
-                # genres: h4 tags inside item (usually multiple <h4>Genre</h4>)
-                genres = re.findall(r'<h4>([^<]+)</h4>', item)
-                genre_str = ', '.join(genres) if genres else 'Unknown'
+                # --- Extract size and age
+                size = self.cm.ph.getSearchGroups(item, r'<td[^>]*>([\d\.]+\s*[MGK]B)</td>')[0].strip() or 'Unknown'
+                age = self.cm.ph.getSearchGroups(item, r'<td[^>]*>(\d+\s*[smhdwy])</td>')[0].strip() or 'Unknown'
 
-                # rating
-                rating = self.cm.ph.getSearchGroups(item, r'<h4 class="rating">([^<]+)<')[0].strip()
-                if not rating:
-                    rating = 'N/A'
+                # --- COLORIZATION ---
+                def safe_sub(pattern, color, text, flags=0):
+                    try:
+                        return re.sub(pattern,
+                                      lambda m: E2ColoR(color) + m.group(0) + E2ColoR('white'),
+                                      text, flags=flags)
+                    except:
+                        return text
 
-                # determine dynamic rating color
-                try:
-                    # rating format like "4.9 / 10" -> take left part
-                    rating_left = rating.split('/')[0].strip()
-                    rating_val = float(rating_left)
-                    if rating_val >= 7.0:
-                        rating_color_name = 'green'
-                    elif rating_val >= 5.0:
-                        rating_color_name = 'yellow'
-                    else:
-                        rating_color_name = 'red'
-                except Exception:
-                    rating_color_name = 'gray'
+                color_title = title
 
-                # Colorized title: Title (Year)
-                # Title in white, bracket in green, year in yellow, then reset to white
-                if movie_year:
-                    colored_title = (E2ColoR('white') + movie_title + ' ' +
-                                     E2ColoR('green') + '(' +
-                                     E2ColoR('yellow') + movie_year +
-                                     E2ColoR('green') + ')' +
-                                     E2ColoR('white'))
-                else:
-                    colored_title = E2ColoR('white') + movie_title + E2ColoR('white')
+                # 1️⃣ Colorize show tag [eztv]
+                color_title = safe_sub(r'\[eztv\]', 'khaki', color_title, re.I)
 
-                # Description: Genre value in yellow, Rating value colored dynamically
-                desc = ('Genre: ' + E2ColoR('yellow') + genre_str + E2ColoR('white') +
-                        ' | Rating: ' + E2ColoR(rating_color_name) + rating + E2ColoR('white'))
+                # 2️⃣ Resolution (480p, 720p, 1080p, 2160p)
+                color_title = safe_sub(r'\b(480p|720p|1080p|2160p)\b', 'fuchsia', color_title, re.I)
 
+                # 3️⃣ Codec formats (x264, x265, h264, hevc, xvid)
+                color_title = safe_sub(r'\b(x264|x265|h\.?264|h\.?265|hevc|xvid)\b', 'olive', color_title, re.I)
+
+                # 4️⃣ Source tags (WEB, WEBRip, WEB-DL, HDTV, BluRay)
+                color_title = safe_sub(r'\b(WEB[- ]?DL|WEB[- ]?Rip|WEB|HDTV|BluRay|DVDRip|CAM|TS)\b', 'aqua', color_title, re.I)
+
+                # 5️⃣ Release group (after a dash, e.g. -FENiX)
+                color_title = safe_sub(r'-(\w+)$', 'violet', color_title, re.I)
+
+                # 6️⃣ Season/Episode combined (S01E05)
+                color_title = safe_sub(r'\bS\d{1,2}E\d{1,2}\b', 'yellow', color_title, re.I)
+
+                # 7️⃣ Individual season or episode (S01, E05)
+                color_title = safe_sub(r'\bS\d{1,2}\b', 'green', color_title, re.I)
+                color_title = safe_sub(r'\bE\d{1,2}\b', 'yellow', color_title, re.I)
+
+                # 8️⃣ Year patterns
+                color_title = safe_sub(r'\b(19\d{2}|20\d{2})\b', 'orange', color_title)
+
+                # --- Description
+                desc = (
+                    "Size: " + E2ColoR('yellow') + size + E2ColoR('white') +
+                    " | Age: " + E2ColoR('cyan') + age + E2ColoR('white')
+                )
+
+                # --- Add directory entry
                 params = dict(cItem)
                 params.update({
-                    'title': colored_title,
-                    'url': url,
-                    'icon': icon,
+                    'title': color_title,
+                    'url': full_url,
                     'desc': desc,
+                    'icon': '',
                     'category': 'movie_torrents'
                 })
                 self.addDir(params)
 
-            except Exception:
-                printExc()
+            except Exception as e:
+                printDBG("Error parsing item: %s" % str(e))
 
-        # Next page
-        try:
-            next_page = self.cm.ph.getSearchGroups(data, r'href="([^"]+page=\d+[^"]*)"[^>]*>Next')[0]
-        except Exception:
-            next_page = ''
+        # --- NEXT PAGE ---
+        next_page = self.cm.ph.getSearchGroups(
+            data, r'<a href="([^"]+)" title="EZTV Torrents - Page: \d+"> next page</a>'
+        )[0]
         if next_page:
             if not next_page.startswith('http'):
                 next_page = self.MAIN_URL + next_page
             params = dict(cItem)
-            params.update({'title': _('Next page'), 'url': next_page})
+            params.update({'title': _('Next Page ➜'), 'url': next_page})
             self.addDir(params)
-
+    
     ###################################################
     # LIST TORRENTS FOR MOVIE
     ###################################################
     def exploreItems(self, cItem):
-        printDBG("TorrentYTSHost.exploreItems url[%s]" % cItem.get('url', ''))
+        printDBG("TorrentEZTVHost.exploreItems url[%s]" % cItem.get('url', ''))
+        base_url = 'https://eztv.tf'
+
         sts, data = self.cm.getPage(cItem.get('url', ''))
         if not sts or not data:
             return
 
-        # Find section with torrent download links
-        section = self.cm.ph.getDataBeetwenMarkers(
-            data, '<em class="pull-left">Available in', '<br><span', False
+        # --- Extract main page sections ---
+        main_section = self.cm.ph.getDataBeetwenMarkers(
+            data, 'class="episode_left_column">', 'class="section_post_header">Alternate Releases', False
         )[1]
-        if not section:
-            # fallback: try older structure
-            section = self.cm.ph.getDataBeetwenMarkers(data, '<p class="hidden-xs hidden-sm">', '</p>', False)[1]
+        if not main_section:
+            main_section = data
 
-        blocks = self.cm.ph.getAllItemsBeetwenMarkers(section, '<a', '</a>')
-        printDBG("blocks.searchMovies pattern[%s]" % blocks)
+        # 1️⃣ Section 1 - Episode Info (poster, title, season/episode)
+        section1 = self.cm.ph.getDataBeetwenMarkers(
+            main_section, '<td class="section_post_header">Episode Breakdown</td>', '</table>', False
+        )[1]
 
-        for b in blocks:
-            href = self.cm.ph.getSearchGroups(b, r'href="([^"]+)"')[0]
-            if 'torrent/download/' not in href:
-                continue
+        # 2️⃣ Section 2 - Download Links (torrent, magnet)
+        section2 = self.cm.ph.getDataBeetwenMarkers(
+            main_section, '<td class="section_post_header">Download Links</td>', '</table>', False
+        )[1]
 
-            quality = self.cm.ph.getDataBeetwenMarkers(b, '>', '<', False)[1].strip()
-            if not quality:
-                quality = self.cm.ph.getSearchGroups(b, r'Download [^"]+ (\d+p[^"]*) Torrent')[0]
+        # 3️⃣ Section 3 - Torrent Info (hash, size, release date, resolution)
+        section3 = self.cm.ph.getDataBeetwenMarkers(
+            main_section, '<td class="section_post_header">Torrent Info</td>', '</table>', False
+        )[1]
 
-            name = '%s [%s]' % (cItem.get('title', 'Torrent'), quality)
+        # -------------------------------
+        # 🔹 Extract details from section 1
+        # -------------------------------
+        show_title = self.cm.ph.getSearchGroups(section1, r'title="([^"]+)"')[0]
+        poster = self.cm.ph.getSearchGroups(section1, r'src="([^"]+)"')[0]
+        if poster and not poster.startswith('http'):
+            poster = base_url + poster
 
+        season = self.cm.ph.getSearchGroups(section1, r'<b>Season:</b>\s*(\d+)')[0]
+        episode = self.cm.ph.getSearchGroups(section1, r'<b>Episode:</b>\s*(\d+)')[0]
+
+        # -------------------------------
+        # 🔹 Extract details from section 2
+        # -------------------------------
+        torrent_link = self.cm.ph.getSearchGroups(section2, r'href="(https?://[^"]+\.torrent)"')[0]
+        magnet_link = self.cm.ph.getSearchGroups(section2, r'href="(magnet:[^"]+)"')[0]
+
+        added_text = self.cm.ph.getSearchGroups(section2, r'Added\s*([^<]+)<')[0]
+        uploader = self.cm.ph.getSearchGroups(section2, r'by\s*<span[^>]*>([^<]+)<')[0]
+
+        # -------------------------------
+        # 🔹 Extract details from section 3
+        # -------------------------------
+        torrent_file = self.cm.ph.getSearchGroups(section3, r'<b>Torrent File:</b>\s*([^<]+)<')[0]
+        torrent_hash = self.cm.ph.getSearchGroups(section3, r'<b>Torrent Hash:</b>\s*([^<]+)<')[0]
+        file_size = self.cm.ph.getSearchGroups(section3, r'<b>Filesize:</b>\s*([^<]+)<')[0]
+        released = self.cm.ph.getSearchGroups(section3, r'<b>Released:</b>\s*([^<]+)<')[0]
+        resolution = self.cm.ph.getSearchGroups(section3, r'<b>Resolution:</b>\s*([^<]+)<')[0]
+        format_ = self.cm.ph.getSearchGroups(section3, r'<b>File Format:</b>\s*([^<]+)<')[0]
+
+        # -------------------------------
+        # 🔹 Build detailed description
+        # -------------------------------
+        try:
+            white = E2ColoR('white')
+            col_hash = E2ColoR('yellow')
+            col_size = E2ColoR('cyan')
+            col_released = E2ColoR('crimson')
+            col_res = E2ColoR('orange')
+            col_fmt = E2ColoR('violet')
+            col_added = E2ColoR('dodgerblue')
+            col_upl = E2ColoR('gold')
+        except Exception:
+            # fallback: empty strings (no colors)
+            white = col_hash = col_size = col_released = col_res = col_fmt = col_added = col_upl = ''
+
+        desc_lines = []
+        if torrent_hash:
+            desc_lines.append(col_hash + "Hash: " + white + torrent_hash + white)
+        if file_size:
+            desc_lines.append(col_size + "Size: " + white + file_size + white)
+        if released:
+            desc_lines.append(col_released + "Released: " + white + released + white)
+        if resolution:
+            desc_lines.append(col_res + "Resolution: " + white + resolution + white)
+        if format_:
+            desc_lines.append(col_fmt + "Format: " + white + format_ + white)
+        if added_text:
+            desc_lines.append(col_added + "Added: " + white + added_text + white)
+        if uploader:
+            desc_lines.append(col_upl + "Uploader: " + white + uploader + white)
+
+        full_desc = "\n".join(desc_lines).strip()
+
+        # -------------------------------
+        # Add the Torrent item (if present)
+        # -------------------------------
+        if torrent_link:
             params = dict(cItem)
             params.update({
-                'title': name,
-                'url': href,
-                'icon': cItem.get('icon', ''),
-                'desc': 'YTS Torrent %s' % quality,
+                'title': E2ColoR('cyan') + '⬇ Download Torrent' + E2ColoR('white'),
+                'url': torrent_link,
+                'icon': poster or cItem.get('icon', ''),
+                'desc': full_desc,
+                'category': 'video'
+            })
+            self.addVideo(params)
+
+        # -------------------------------
+        # Add the Magnet item (if present)
+        # -------------------------------
+        if magnet_link:
+            params = dict(cItem)
+            params.update({
+                'title': E2ColoR('orange') + '🧲 Magnet Link' + E2ColoR('white'),
+                'url': magnet_link,
+                'icon': poster or cItem.get('icon', ''),
+                'desc': full_desc,
                 'category': 'video'
             })
             self.addVideo(params)
@@ -314,7 +396,7 @@ class TorrentYTSHost(CBaseHostClass):
     def searchMovies(self, pattern, cItem):
         if not pattern:
             pattern = self.searchPattern
-        printDBG("TorrentYTSHost.searchMovies pattern[%s]" % pattern)
+        printDBG("TorrentEZTVHost.searchMovies pattern[%s]" % pattern)
         safe_pattern = urllib_quote_plus(pattern)
         search_url = '%s/browse-movies/%s' % (self.MAIN_URL, safe_pattern)
         params = dict(cItem)
@@ -322,7 +404,7 @@ class TorrentYTSHost(CBaseHostClass):
         self.listMovies(params)
 
     def listSearchResult(self, cItem, searchPattern, searchType):
-        printDBG("TorrentYTSHost.listSearchResult cItem[%s], searchPattern[%s] searchType[%s]" % (cItem, searchPattern, searchType))
+        printDBG("TorrentEZTVHost.listSearchResult cItem[%s], searchPattern[%s] searchType[%s]" % (cItem, searchPattern, searchType))
         cItem = dict(cItem)
         cItem['url'] = self.SEARCH_URL + urllib_quote_plus(searchPattern)
         self.listMovies(cItem)
@@ -424,14 +506,14 @@ class TorrentYTSHost(CBaseHostClass):
         return streams
 
     def getVideoLinks(self, url):
-        printDBG("TorrentYTSHost.getVideoLinks [%s]" % url)
+        printDBG("TorrentEZTVHost.getVideoLinks [%s]" % url)
         urlTab = []
         if self.cm.isValidUrl(url):
             return self.up.getVideoLinkExt(url)
         return urlTab
 
     def handleService(self, index, refresh=0, searchPattern='', searchType=''):
-        printDBG('TorrentYTSHost.handleService start')
+        printDBG('TorrentEZTVHost.handleService start')
 
         CBaseHostClass.handleService(self, index, refresh, searchPattern, searchType)
 
@@ -473,4 +555,4 @@ class TorrentYTSHost(CBaseHostClass):
 class IPTVHost(CHostBase):
 
     def __init__(self):
-        CHostBase.__init__(self, TorrentYTSHost(), True, [])
+        CHostBase.__init__(self, TorrentEZTVHost(), True, [])
