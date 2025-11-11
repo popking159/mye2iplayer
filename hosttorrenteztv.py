@@ -434,40 +434,25 @@ class TorrentEZTVHost(CBaseHostClass):
 
         # URL encode the torrent URL
         encoded_url = urllib_quote_plus(torrent_url)
-        
-        # Generate M3U URL exactly as in your curl example
-        m3u_url = "%s/stream?link=%s&m3u=m3u" % (self.TORSERVER_BASE, encoded_url)
-        
-        printDBG("M3U generation URL: %s" % m3u_url)
-        
-        # First, let's fetch the M3U content to verify it works
-        try:
-            sts, m3u_data = self.cm.getPage(m3u_url, {'header': {'accept': 'application/octet-stream'}})
-            if sts and m3u_data:
-                printDBG("M3U content received, length: %d" % len(m3u_data))
-                printDBG("M3U content preview: %s" % m3u_data[:500])
-                
-                # Parse M3U to get actual stream URLs
-                stream_urls = self.parseM3UContent(m3u_data, m3u_url)
-                if stream_urls:
-                    return stream_urls
-                else:
-                    printDBG("Failed to parse M3U content, returning M3U URL directly")
-            else:
-                printDBG("Failed to fetch M3U content")
-        except Exception as e:
-            printDBG("Error fetching M3U: %s" % str(e))
-            printExc()
 
-        # If M3U parsing fails, return the M3U URL directly
-        url_with_meta = strwithmeta(m3u_url, {
-            'iptv_proto': 'http',
+        # Use /stream/fname endpoint for stable single-file playback
+        stream_url = "%s/stream/fname?link=%s&index=0&play=1&subtitles=1" % (self.TORSERVER_BASE, encoded_url)
+        printDBG("Direct stream URL (fname mode): %s" % stream_url)
+
+        # Add Enigma2 metadata for stable playback
+        url_with_meta = strwithmeta(stream_url, {
+            'iptv_proto': 'http_ts',
+            'live': True,
+            'buffering': '1',
             'Referer': self.TORSERVER_BASE,
-            'User-Agent': 'Mozilla/5.0',
-            'accept': 'application/octet-stream'
+            'User-Agent': 'Mozilla/5.0 (X11; Linux armv7l) AppleWebKit/537.36',
+            'accept': 'video/x-matroska,application/octet-stream'
         })
-        
-        return [{'name': 'TorServer M3U', 'url': url_with_meta, 'need_resolve': 0}]
+
+        # Give TorrServer a short preload time
+        time.sleep(1)
+
+        return [{'name': 'TorServer Stream (Stable)', 'url': url_with_meta, 'need_resolve': 0}]
 
     def parseM3UContent(self, m3u_data, base_url):
         """Parse M3U content and extract stream URLs"""

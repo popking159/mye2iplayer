@@ -230,13 +230,15 @@ class TorrentYTSHost(CBaseHostClass):
                 # Colorized title: Title (Year)
                 # Title in white, bracket in green, year in yellow, then reset to white
                 if movie_year:
-                    colored_title = (E2ColoR('white') + movie_title + ' ' +
-                                     E2ColoR('green') + '(' +
-                                     E2ColoR('yellow') + movie_year +
-                                     E2ColoR('green') + ')' +
-                                     E2ColoR('white'))
+                    colored_title = movie_title + ' ' + movie_year
+                    # colored_title = (E2ColoR('white') + movie_title + ' ' +
+                                     # E2ColoR('green') + '(' +
+                                     # E2ColoR('yellow') + movie_year +
+                                     # E2ColoR('green') + ')' +
+                                     # E2ColoR('white'))
                 else:
-                    colored_title = E2ColoR('white') + movie_title + E2ColoR('white')
+                    # colored_title = E2ColoR('white') + movie_title + E2ColoR('white')
+                    colored_title = movie_title
 
                 # Description: Genre value in yellow, Rating value colored dynamically
                 desc = ('Genre: ' + E2ColoR('yellow') + genre_str + E2ColoR('white') +
@@ -354,7 +356,7 @@ class TorrentYTSHost(CBaseHostClass):
         encoded_url = urllib_quote_plus(torrent_url)
         
         # Generate M3U URL exactly as in your curl example
-        m3u_url = "%s/stream?link=%s&m3u=m3u" % (self.TORSERVER_BASE, encoded_url)
+        m3u_url = "%s/stream?link=%s&m3u=m3u&subtitles=1" % (self.TORSERVER_BASE, encoded_url)
         
         printDBG("M3U generation URL: %s" % m3u_url)
         
