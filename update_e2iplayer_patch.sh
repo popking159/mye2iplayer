@@ -23,18 +23,20 @@ URLPARSER_FILE="$PLUGIN_DIR/libs/urlparser.py"
 # --------------------------
 
 # Hosts to update or add (with "host" prefix)
-NEW_HOSTS_NAMES="hosttorrentyts hosttorrenteztv hostcinemana  hostkrmzy"
+NEW_HOSTS_NAMES="hosttorrentyts hosttorrenteztv hostcinemana  hostkrmzy hostq3isk"
 
 # Host → domain mapping for aliases.txt
 HOSTS_DOMAINS="
 hostcinemana=https://cinemana.vip/
 hostkrmzy=https://krmzy.org/
+hostq3isk=https://3d.q9w8e7.shop/
 hosttorrentyts=Torrent YTS
 hosttorrenteztv=Torrent EZTV
 "
 
 # Lines to add into urlparser.py under self.hostMap = {
 URLPARSER_LINES="
+"file-upload.org": self.pp.parserJWPLAYER,
 "
 # --------------------------
 
