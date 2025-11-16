@@ -41,7 +41,7 @@ class WikiCourses(CBaseHostClass):
         CBaseHostClass.__init__(self, {'history': 'wikicourses', 'cookie': 'wikicourses.cookie'})
         self.MAIN_URL = gettytul()
         self.SEARCH_URL = self.MAIN_URL + 'search?q='
-        self.DEFAULT_ICON_URL = "https://www.wikicourses.net/images/logo.svg"
+        self.DEFAULT_ICON_URL = "https://raw.githubusercontent.com/popking159/mye2iplayer/refs/heads/main/wikicourses.png"
         self.HEADER = self.cm.getDefaultHeader(browser='chrome')
         self.defaultParams = {
             'header': self.HEADER,
