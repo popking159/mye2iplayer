@@ -23,13 +23,11 @@ URLPARSER_FILE="$PLUGIN_DIR/libs/urlparser.py"
 # --------------------------
 
 # Hosts to update or add (with "host" prefix)
-NEW_HOSTS_NAMES="hosttorrentyts hosttorrenteztv hostcinemana  hostkrmzy hostq3isk"
+NEW_HOSTS_NAMES="hosttorrentyts hosttorrenteztv hostwikicourses"
 
 # Host → domain mapping for aliases.txt
 HOSTS_DOMAINS="
-hostcinemana=https://cinemana.vip/
-hostkrmzy=https://krmzy.org/
-hostq3isk=https://3d.q9w8e7.shop/
+hostwikicourses=https://www.wikicourses.net/
 hosttorrentyts=Torrent YTS
 hosttorrenteztv=Torrent EZTV
 "
